@@ -1,15 +1,15 @@
 # STATUS — GP-50 Converter MVP
-updated: 2026-07-13 tick-3 | branch: mvp-converter | phase: 3 | acceptance: 0/7
+updated: 2026-07-13 tick-4 | branch: mvp-converter | phase: 4 | acceptance: 0/7 (UI drive pending T5)
 
 ## Now / next
-- T2 DONE: app/api.py — POST /api/jobs (multipart upload + config, background daemon thread, swappable job_executor), GET status (poll), GET download (path-safe), GET list. In-memory job store w/ lock. Reviewed: upload/download path-safe, per-file + job-level isolation. Evidence: 18 tests pass (8 new hermetic). Committed.
-- Next: T3 frontend (convert UI: drag-drop, format toggle, epochs, live progress poll, download).
+- T3 DONE: app/static/{index.html,app.js,style.css} + main.py serves / and mounts /static. Drag-drop+picker (.nam filter+dedup), format toggle (0.7.0 disabled), epochs+Fast preset, live progress poll, download links, error handling. Offline-safe (no CDNs). Reviewed: correct API calls + polling + terminal detection. Evidence: 22 tests pass (4 new). Committed.
+- Next: T4 device-stub screen (mocked SnapTone/IR→patch usage inspector + MOCK banner).
 
 ## Backlog (DAG)
 - [x] T0  scaffold FastAPI app, .venv-app, pytest harness, run.sh        [done]  (2 passed)
 - [x] T1  engine API: app/engine.py wrap 2-venv convert, progress_cb, 0.5.x path   [done]  (10 passed)
 - [x] T2  backend: POST create-job + background exec + GET status/download/list   (deps: T1)  [done]  (18 passed)
-- [ ] T3  frontend: drag-drop, file list, format toggle, DI/epochs config, live progress, download   (deps: T2)  [doing]
+- [x] T3  frontend: drag-drop, format toggle, epochs, live progress, download   (deps: T2)  [done]  (22 passed)
 - [ ] T4  device-stub screen: mocked SnapTone/IR→patch usage inspector + MOCK banner   (deps: T0)  [todo]
 - [ ] T5  robustness + tests: failure isolation (have it), error surfacing in UI, unit + HEADLESS e2e (real fast-preset convert via API) + UI screenshot   (deps: T2,T3)  [todo]
 - [ ] T6  acceptance sweep + run.sh + README; verify all 7 criteria   (deps: T3,T4,T5)  [todo]

@@ -68,6 +68,39 @@ def _nib_decode(mid):
     return [(mid[i] << 4) | mid[i + 1] for i in range(0, len(mid) - 1, 2)]
 
 
+def validate_stream(packets: list) -> tuple:
+    """Confirm a patch-write stream is well-formed before sending (the gate for
+    arbitrary edited patches, since they can't match a Suite capture). Checks every
+    packet's CRC, that cmd is the patch-write command, indices are contiguous from 0,
+    and the reassembled payload has the expected header + length for a 552-byte .prst.
+    Returns (ok, reason)."""
+    payload = bytearray()
+    for i, w in enumerate(packets):
+        if not w or w[0] != 0xF0 or w[-1] != 0xF7:
+            return False, f"packet {i}: not F0..F7 framed"
+        buf = _nib_decode(w[1:-1])
+        if len(buf) < 4:
+            return False, f"packet {i}: truncated"
+        crc, cmd, index, length = buf[0], buf[1], buf[2], buf[3]
+        if crc8(buf[1:]) != crc:
+            return False, f"packet {i}: bad CRC"
+        if cmd != PATCH_WRITE_CMD:
+            return (
+                False,
+                f"packet {i}: cmd {cmd:#04x} != patch-write {PATCH_WRITE_CMD:#04x}",
+            )
+        if index != i:
+            return False, f"packet {i}: non-contiguous index {index}"
+        if length != len(buf) - 4:
+            return False, f"packet {i}: length {length} != payload {len(buf) - 4}"
+        payload += bytes(buf[4 : 4 + length])
+    if len(payload) != 6 + (552 - 0x19):  # header + prst[0x19:]
+        return False, f"payload {len(payload)} bytes, expected {6 + (552 - 0x19)}"
+    if payload[:2] != PATCH_HDR:
+        return False, f"payload header {payload[:2].hex()} != {PATCH_HDR.hex()}"
+    return True, "ok"
+
+
 def verify_against_capture(path: str) -> tuple:
     """Rebuild every host->device packet in a MIDI Monitor capture from its
     decoded (cmd,index,payload) and confirm it matches the captured wire bytes."""

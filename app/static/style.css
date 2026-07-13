@@ -615,6 +615,12 @@ button:disabled {
   color: var(--text); border-radius: 6px; padding: 0.3rem 0.7rem; font-size: 0.82rem; cursor: pointer;
 }
 .save-bar:not(.dirty) .save-edit { pointer-events: none; }
+.write-dev {
+  border: 1px solid #d8434a; background: color-mix(in srgb, #d8434a 16%, transparent);
+  color: var(--text); border-radius: 6px; padding: 0.3rem 0.7rem; font-size: 0.82rem; cursor: pointer;
+}
+.write-dev:hover { background: color-mix(in srgb, #d8434a 28%, transparent); }
+.save-bar:not(.dirty) .write-dev { pointer-events: none; }
 .save-note { font-size: 0.78rem; }
 
 .chip-row { display: flex; flex-wrap: wrap; gap: 0.3rem; }

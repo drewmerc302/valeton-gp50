@@ -537,12 +537,16 @@
     const dl = document.createElement("button");
     dl.type = "button"; dl.className = "save-edit"; dl.textContent = "⬇ Download edited .prst";
     dl.addEventListener("click", () => downloadEdit(p));
+    const wr = document.createElement("button");
+    wr.type = "button"; wr.className = "write-dev"; wr.textContent = "⚡ Write to device";
+    wr.title = "Write this patch directly to the pedal (overwrites a slot)";
+    wr.addEventListener("click", () => writeToDevice(p));
     const rst = document.createElement("button");
     rst.type = "button"; rst.className = "linkish"; rst.textContent = "reset";
     rst.addEventListener("click", () => { edits.delete(p.slot); renderPresets(); });
     const note = document.createElement("span");
     note.className = "subtitle save-note";
-    bar.appendChild(dl); bar.appendChild(rst); bar.appendChild(note);
+    bar.appendChild(dl); bar.appendChild(wr); bar.appendChild(rst); bar.appendChild(note);
     d.appendChild(bar);
     return d;
   }
@@ -574,6 +578,41 @@
       if (note) note.textContent = `Saved ${a.download} — import via Suite (device is not written directly).`;
     } catch (err) {
       if (note) note.textContent = `Failed: ${err.message}`;
+    }
+  }
+
+  async function writeToDevice(p) {
+    const e = getEdit(p.slot);
+    const note = listEl.querySelector(`.save-bar[data-slot="${p.slot}"] .save-note`);
+    const ans = prompt(
+      `Write "${p.name}" directly to the pedal.\n\n` +
+        `Enter the target slot (0–99) to OVERWRITE. Make sure Valeton Suite is closed.`,
+      String(p.slot)
+    );
+    if (ans === null) return;
+    const target = Number(ans);
+    if (!Number.isInteger(target) || target < 0 || target > 99) {
+      if (note) note.textContent = "Write cancelled: slot must be 0–99.";
+      return;
+    }
+    if (!confirm(`Overwrite device slot ${target} with "${p.name}"? This writes to the pedal.`)) return;
+    if (note) note.textContent = `Writing to slot ${target}…`;
+    try {
+      const r = await fetch("/api/device/write", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patch_slot: p.slot, params: e.params, bypass: e.bypass,
+          settings: e.settings, footswitches: e.footswitches || {}, models: e.models || {},
+          target_slot: target, confirm: true,
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.detail || j.error || `HTTP ${r.status}`);
+      const vn = j.verified_name ? ` — slot now reads "${j.verified_name}"` : "";
+      if (note) note.textContent = `✓ Written to slot ${target} (${j.acks}/${j.packets} ACKs)${vn}.`;
+    } catch (err) {
+      if (note) note.textContent = `Write failed: ${err.message}`;
     }
   }
 

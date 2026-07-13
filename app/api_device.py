@@ -141,6 +141,39 @@ def blocklib_delete(entry_id: str) -> dict:
     return {"deleted": blocklib.delete_entry(entry_id)}
 
 
+class WriteRequest(EditRequest):
+    target_slot: int  # device patch index 0..99 to overwrite
+    confirm: bool = False  # must be true — the UI sets it after user confirmation
+
+
+@router.post("/write")
+def write_to_device(req: WriteRequest) -> dict:
+    """Apply edits, then write the resulting patch DIRECTLY to the pedal at
+    target_slot and verify by read-back. Overwrites that slot. Requires confirm=True.
+    Uses the validated 0x1D patch-write protocol (see re/DEVICE_WRITE.md)."""
+    if not req.confirm:
+        raise HTTPException(400, "refusing to write: confirm=true required")
+    if not 0 <= req.target_slot <= 99:
+        raise HTTPException(400, f"target_slot {req.target_slot} out of range (0..99)")
+    try:
+        _, data = patchlib.apply_edits(
+            req.patch_slot,
+            {
+                "params": req.params,
+                "bypass": req.bypass,
+                "settings": req.settings,
+                "footswitches": req.footswitches,
+                "models": req.models,
+            },
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    result = device_io.write_patch(data, req.target_slot)
+    if result.get("ok"):
+        patchlib.reload()  # inventory may have changed on the device
+    return result
+
+
 @router.post("/edit")
 def edit(req: EditRequest) -> Response:
     """Apply parameter / bypass / patch-setting edits and return the edited .prst

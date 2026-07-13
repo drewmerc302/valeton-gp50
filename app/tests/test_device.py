@@ -247,6 +247,61 @@ def test_official_names_origin():
     assert rvb["label_official"] == rvb["label"]
 
 
+def test_write_endpoint_requires_confirm():
+    r = client.post(
+        "/api/device/write",
+        json={"patch_slot": 15, "target_slot": 90, "confirm": False},
+    )
+    assert r.status_code == 400
+    assert "confirm" in r.json()["detail"].lower()
+
+
+def test_write_endpoint_rejects_bad_target():
+    r = client.post(
+        "/api/device/write",
+        json={"patch_slot": 15, "target_slot": 200, "confirm": True},
+    )
+    assert r.status_code == 400
+
+
+def test_write_endpoint_applies_edits_and_writes(monkeypatch):
+    # hermetic: capture the .prst handed to the device, no MIDI/subprocess
+    from app import device_io, patchlib
+
+    captured = {}
+
+    def fake_write(prst, slot, timeout=30.0):
+        captured["prst"] = prst
+        captured["slot"] = slot
+        return {
+            "ok": True,
+            "sent": True,
+            "acks": 29,
+            "packets": 29,
+            "verified_name": "US Lead",
+        }
+
+    monkeypatch.setattr(device_io, "write_patch", fake_write)
+    r = client.post(
+        "/api/device/write",
+        json={
+            "patch_slot": 15,
+            "params": {2: {0: 88}},
+            "target_slot": 90,
+            "confirm": True,
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] and body["acks"] == 29
+    # the bytes sent are a valid 552-byte .prst with the edit applied + CRC fixed
+    assert captured["slot"] == 90
+    assert len(captured["prst"]) == 552
+    assert patchlib._param_floats(captured["prst"])[2 * 8 + 0] == 88.0
+    d = captured["prst"]
+    assert d[patchlib.CRC_OFF] == patchlib._crc8(d[patchlib.CRC_OFF + 1 :])
+
+
 def test_sync_endpoint_reports_device_result(monkeypatch):
     # hermetic: fake the device read (no MIDI, no subprocess)
     from app import device_io

@@ -7,6 +7,8 @@ and the device-stub screen get mounted here in later tasks.
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import HTMLResponse
 
+from app.api import router as api_router
+
 app = FastAPI(title="GP-50 Converter")
 
 router = APIRouter()
@@ -26,3 +28,4 @@ def index() -> str:
 
 
 app.include_router(router)
+app.include_router(api_router)

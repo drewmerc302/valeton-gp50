@@ -1,3 +1,7 @@
+# local session/tool config
+.claude/
+.DS_Store
+
 # venvs (recreate from requirements-*.txt)
 .venv/
 .venv-a1/

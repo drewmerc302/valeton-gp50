@@ -53,4 +53,4 @@ wired to real device captures later).
 ## Known limits (flag, don't fail on)
 - Visual/aesthetic polish can't be fully self-verified without Drew's eye — loop verifies
   logic + endpoints + screenshots; Drew judges looks later.
-- Full 100-epoch conversions are slow (~10-20 min each); tests use the fast preset.
+- Full conversions (default 80 epochs) are slow (~12-15 min each); tests use the fast preset.

@@ -14,7 +14,7 @@ Then load the A1.nam in Valeton Suite exactly like any A1 capture.
 This driver only uses the standard library; it shells out to the two venvs.
 
 Usage:
-    python3 a2_to_a1.py INPUT [-o OUTDIR] [--di DI.wav] [--epochs 100]
+    python3 a2_to_a1.py INPUT [-o OUTDIR] [--di DI.wav] [--epochs 80]
 INPUT may be a single .nam or a directory (all *.nam inside are converted).
 """
 
@@ -166,7 +166,7 @@ def main():
         default=str(PROJECT / "refs" / "v3_0_0.wav"),
         help="DI input wav (default: official NAM v3_0_0.wav)",
     )
-    ap.add_argument("--epochs", type=int, default=100)
+    ap.add_argument("--epochs", type=int, default=80)
     ap.add_argument("--arch", default="standard")
     ap.add_argument("--workdir", default=str(PROJECT / "work"))
     ap.add_argument("--venv-a2", default=str(PROJECT / ".venv" / "bin" / "python"))

@@ -65,7 +65,7 @@ class ConvertJob:
 
     input_paths: List[Path]
     di_path: Path = DEFAULT_DI
-    epochs: int = 100
+    epochs: int = 80
     output_format: str = "0.5x"  # '0.5x' | '0.7.0'
     out_dir: Path = DEFAULT_OUT_DIR
     venv_a2: Path = DEFAULT_VENV_A2

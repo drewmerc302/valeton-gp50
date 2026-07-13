@@ -15,7 +15,7 @@
   const resultsEl = document.getElementById("results");
 
   const FAST_EPOCHS = 5;
-  const DEFAULT_EPOCHS = 100;
+  const DEFAULT_EPOCHS = 80;
   const POLL_INTERVAL_MS = 1500;
 
   let selectedFiles = [];

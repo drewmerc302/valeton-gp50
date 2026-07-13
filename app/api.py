@@ -68,7 +68,7 @@ def _get_job_or_404(job_id: str) -> ConvertJob:
 @router.post("/jobs")
 async def create_job(
     files: List[UploadFile] = File(...),
-    epochs: int = Form(100),
+    epochs: int = Form(80),
     output_format: str = Form("0.5x"),
     di: str = Form("default"),
 ) -> dict:

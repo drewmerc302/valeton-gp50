@@ -53,6 +53,31 @@ def test_block_detail_and_facets():
     assert "OD" in dst["types"] and "Fuzz" in dst["types"]
 
 
+def test_sync_endpoint_reports_device_result(monkeypatch):
+    # hermetic: fake the device read (no MIDI, no subprocess)
+    from app import device_io
+
+    monkeypatch.setattr(
+        device_io,
+        "sync_snaptones",
+        lambda: {"ok": True, "count": 3, "snaptones": {"50": "MES LS II"}},
+    )
+    body = client.post("/api/device/sync").json()
+    assert body["ok"] and body["count"] == 3
+
+
+def test_sync_endpoint_surfaces_device_error(monkeypatch):
+    from app import device_io
+
+    monkeypatch.setattr(
+        device_io,
+        "sync_snaptones",
+        lambda: {"ok": False, "error": "device did not respond"},
+    )
+    body = client.post("/api/device/sync").json()
+    assert body["ok"] is False and "did not respond" in body["error"]
+
+
 def test_explorer_page_served():
     html = client.get("/explorer").text
     assert 'id="preset-list"' in html and 'id="filter-bar"' in html

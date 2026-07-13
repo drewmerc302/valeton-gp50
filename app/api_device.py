@@ -15,9 +15,19 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from app import patchlib
+from app import device_io, patchlib
 
 router = APIRouter(prefix="/api/device")
+
+
+@router.post("/sync")
+def sync() -> dict:
+    """Live-read the SnapTone catalog from the pedal and refresh the inventory.
+    Read-only on the device; requires it connected with Valeton Suite closed."""
+    result = device_io.sync_snaptones()
+    if result.get("ok"):
+        patchlib.reload()
+    return result
 
 
 @router.get("/inventory")

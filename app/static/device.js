@@ -184,12 +184,42 @@
     updateCloneBtn();
   });
 
+  async function loadInventory() {
+    const r = await fetch("/api/device/inventory");
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    inv = await r.json();
+    if (inv.source) $("source-note").textContent = inv.source;
+  }
+
+  async function syncDevice() {
+    const btn = $("sync-btn");
+    const status = $("sync-status");
+    btn.disabled = true;
+    status.textContent = "Reading pedal… (connect it, close Valeton Suite)";
+    try {
+      const r = await fetch("/api/device/sync", { method: "POST" });
+      const body = await r.json();
+      if (!body.ok) throw new Error(body.error || "sync failed");
+      status.textContent = `Synced ${body.count} SnapTones from device.`;
+      await loadInventory();
+      $("ct-snaptone").textContent = `(${inv.snaptones.length})`;
+      $("ct-ir").textContent = `(${inv.irs.length})`;
+      selected = null;
+      renderLib();
+      renderPatches();
+      fillClone();
+    } catch (e) {
+      status.textContent = `Sync failed: ${e.message}`;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  $("sync-btn").addEventListener("click", syncDevice);
+
   async function init() {
     try {
-      const r = await fetch("/api/device/inventory");
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      inv = await r.json();
-      if (inv.source) $("source-note").textContent = inv.source;
+      await loadInventory();
     } catch (e) {
       $("source-note").textContent = `Could not load inventory: ${e.message}`;
       return;

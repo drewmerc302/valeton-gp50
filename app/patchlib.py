@@ -239,6 +239,12 @@ def _load() -> tuple:
     return patches, snaptones, irs
 
 
+def reload() -> None:
+    """Drop caches so the next read reflects an updated bank_map.json / exports."""
+    _load.cache_clear()
+    _bank_labels.cache_clear()
+
+
 def all_patches() -> list[Patch]:
     return list(_load()[0])
 

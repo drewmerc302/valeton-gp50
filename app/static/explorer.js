@@ -16,10 +16,18 @@
   let facets = { blocks: [] };
   let filters = []; // {block, type|null, model|null}
 
+  // N->S is the pedal's block name for the SnapTone slot; label it plainly.
+  const BLOCK_DISPLAY = { "N->S": "SnapTone" };
+  const blockDisplay = (b) => BLOCK_DISPLAY[b] || b;
+
+  const SAVED_KEY = "gp50_savedFilters";
+  const loadSaved = () => { try { return JSON.parse(localStorage.getItem(SAVED_KEY)) || []; } catch { return []; } };
+  const persistSaved = (list) => localStorage.setItem(SAVED_KEY, JSON.stringify(list));
+
   const activeBlocks = (p) => p.blocks.filter((b) => b.active);
 
   function filterLabel(f) {
-    return [f.block, f.type, f.model].filter(Boolean).join(" · ");
+    return [blockDisplay(f.block), f.type, f.model].filter(Boolean).join(" · ");
   }
 
   function sameFilter(a, b) {
@@ -53,7 +61,14 @@
   // --- filter builder: Block -> Type(optional) -> Model(optional) -----------
   function buildFilterBar() {
     filterBar.innerHTML = "";
-    const blockSel = mkSelect(["— block —", ...facets.blocks.map((b) => b.block)]);
+    const blockSel = document.createElement("select");
+    fill(blockSel, ["— block —"]);
+    facets.blocks.forEach((b) => {
+      const o = document.createElement("option");
+      o.value = b.block;
+      o.textContent = blockDisplay(b.block);
+      blockSel.appendChild(o);
+    });
     const typeSel = mkSelect(["any type"]);
     const modelSel = mkSelect(["any model"]);
     const addBtn = document.createElement("button");
@@ -162,12 +177,59 @@
     });
   }
 
+  // --- saved filter sets (localStorage) -------------------------------------
+  function renderSaved() {
+    const box = $("saved-filters");
+    box.innerHTML = "";
+    loadSaved().forEach((entry, i) => {
+      const pill = document.createElement("span");
+      pill.className = "saved-pill";
+      const apply = document.createElement("button");
+      apply.type = "button";
+      apply.className = "saved-apply";
+      apply.textContent = entry.name;
+      apply.title = entry.filters.map(filterLabel).join(" AND ") + (entry.search ? ` · "${entry.search}"` : "");
+      apply.addEventListener("click", () => {
+        filters = entry.filters.map((f) => ({ ...f }));
+        searchEl.value = entry.search || "";
+        render();
+      });
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "saved-del";
+      del.textContent = "✕";
+      del.title = "Delete saved filter";
+      del.addEventListener("click", () => {
+        const list = loadSaved();
+        list.splice(i, 1);
+        persistSaved(list);
+        renderSaved();
+      });
+      pill.appendChild(apply);
+      pill.appendChild(del);
+      box.appendChild(pill);
+    });
+  }
+
+  function saveCurrent() {
+    if (!filters.length && !searchEl.value.trim()) return;
+    const suggested = filters.map(filterLabel).join(", ") || searchEl.value.trim();
+    const name = prompt("Name this filter set:", suggested);
+    if (!name) return;
+    const list = loadSaved();
+    list.push({ name, filters: filters.map((f) => ({ ...f })), search: searchEl.value.trim() });
+    persistSaved(list);
+    renderSaved();
+  }
+
   function render() {
     renderActiveFilters();
     renderPresets();
+    $("save-filter").disabled = !filters.length && !searchEl.value.trim();
   }
 
-  searchEl.addEventListener("input", renderPresets);
+  $("save-filter").addEventListener("click", saveCurrent);
+  searchEl.addEventListener("input", render);
 
   async function init() {
     try {
@@ -183,6 +245,7 @@
       return;
     }
     buildFilterBar();
+    renderSaved();
     render();
   }
 

@@ -56,7 +56,10 @@ def test_block_detail_and_facets():
 def test_explorer_page_served():
     html = client.get("/explorer").text
     assert 'id="preset-list"' in html and 'id="filter-bar"' in html
-    assert "/api/device" in client.get("/static/explorer.js").text
+    assert 'id="save-filter"' in html and 'id="saved-filters"' in html
+    js = client.get("/static/explorer.js").text
+    assert "/api/device" in js
+    assert "gp50_savedFilters" in js  # saved filter sets persist to localStorage
 
 
 def test_snaptone_patches_are_the_nam_patches():

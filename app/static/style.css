@@ -530,3 +530,40 @@ button:disabled {
 .chip.blk-dly  { border-left-color: #3a6df0; }
 .chip.blk-rvb  { border-left-color: #2f9e8f; }
 .chip.blk-ns   { border-left-color: #6d94ff; }
+
+.saved-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+.saved-filters { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.saved-pill {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.saved-apply {
+  border: none;
+  background: var(--track);
+  color: var(--text);
+  padding: 0.2rem 0.6rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.saved-apply:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.saved-del {
+  border: none;
+  border-left: 1px solid var(--border);
+  background: var(--track);
+  color: var(--muted);
+  padding: 0.2rem 0.45rem;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.saved-del:hover { color: var(--fail); }

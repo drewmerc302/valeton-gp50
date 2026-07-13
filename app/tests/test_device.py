@@ -1,103 +1,117 @@
-"""Tests for the read-only device usage-inspector stub (T4).
-
-Everything here is backed by the in-memory MOCK fixture in
-app/device_stub.py — no device I/O, no MIDI, no serial. See that module's
-docstring for the mock-to-real seam.
+"""Tests for the device inspector API, now backed by REAL parsed patch data
+(app/patchlib.py reading presetExports/*.prst). No device I/O — everything is
+derived from the exported patch set + the decoded model catalog.
 """
 
 from fastapi.testclient import TestClient
 
-from app import device_stub
+from app import patchlib
 from app.main import app
 
 client = TestClient(app)
 
 
-def test_inventory_shape():
-    resp = client.get("/api/device/inventory")
-    assert resp.status_code == 200
-    body = resp.json()
-
-    assert body["snaptones"]
-    assert body["irs"]
-    assert body["patches"]
-
+def test_inventory_shape_real_data():
+    body = client.get("/api/device/inventory").json()
+    assert "not a live device read" in body["source"]
+    assert body["snaptones"] and body["irs"] and body["patches"]
+    # the export set is 100 patches
+    assert len(body["patches"]) == 100
+    for p in body["patches"]:
+        assert {
+            "slot",
+            "name",
+            "uses_snaptone",
+            "snaptone_slot",
+            "ir_slot",
+            "amp_slot",
+            "snaptone_name",
+            "ir_name",
+            "amp_name",
+        } <= set(p)
     for s in body["snaptones"]:
         assert set(s.keys()) == {"slot", "name"}
-    for i in body["irs"]:
-        assert set(i.keys()) == {"slot", "name"}
-    for p in body["patches"]:
-        assert set(p.keys()) == {"slot", "name", "snaptone_slot", "ir_slot"}
-
-    assert len(body["patches"]) == 16
 
 
-def test_usage_snaptone_returns_referencing_patches():
-    # slot 0 (Blackstar) is shared by several patches in the fixture.
-    resp = client.get("/api/device/usage/snaptone/0")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["snaptone"] == {"slot": 0, "name": "Blackstar"}
-
-    expected_names = {p["name"] for p in device_stub.PATCHES if p["snaptone_slot"] == 0}
-    assert {p["name"] for p in body["patches"]} == expected_names
-    assert len(body["patches"]) > 1
+def test_snaptone_patches_are_the_nam_patches():
+    # SnapTone slots live at 50..67 (the NAM patches, e.g. slot 50 = MesaLS)
+    body = client.get("/api/device/usage/snaptone/50").json()
+    assert body["snaptone"]["slot"] == 50
+    names = {p["name"] for p in body["patches"]}
+    assert names == {p["name"] for p in patchlib.patches_using_snaptone(50)}
+    assert all(p["uses_snaptone"] for p in body["patches"])
 
 
-def test_usage_snaptone_unused_slot_returns_empty_list():
-    # slot 4 (Vox AC30) is deliberately unused in the fixture.
-    resp = client.get("/api/device/usage/snaptone/4")
-    assert resp.status_code == 200
-    assert resp.json()["patches"] == []
+def test_usage_ir_excludes_snaptone_patches():
+    # a SnapTone patch bypasses the CAB block, so it must never appear in IR usage
+    ir_slot = patchlib.all_irs()[0]["slot"]
+    body = client.get(f"/api/device/usage/ir/{ir_slot}").json()
+    assert all(not p["uses_snaptone"] for p in body["patches"])
 
 
-def test_usage_snaptone_unknown_slot_404():
-    resp = client.get("/api/device/usage/snaptone/999")
-    assert resp.status_code == 404
+def test_usage_unknown_slot_404():
+    assert client.get("/api/device/usage/snaptone/999").status_code == 404
+    assert client.get("/api/device/usage/ir/9999").status_code == 404
 
 
-def test_usage_ir_returns_referencing_patches():
-    resp = client.get("/api/device/usage/ir/2")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["ir"] == {"slot": 2, "name": "British Stack"}
+def test_clone_single_returns_valid_prst():
+    r = client.post(
+        "/api/device/clone", json={"patch_slot": 76, "snaptone_slots": [50]}
+    )
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/octet-stream"
+    data = r.content
+    assert len(data) == 552
+    off = patchlib._model_rec_offset(data, patchlib.NS_CAT)
+    assert data[off] == 50  # repointed to slot 50
+    assert data[patchlib.CRC_OFF] == patchlib._crc8(
+        data[patchlib.CRC_OFF + 1 :]
+    )  # CRC fixed
 
-    expected_names = {p["name"] for p in device_stub.PATCHES if p["ir_slot"] == 2}
-    assert {p["name"] for p in body["patches"]} == expected_names
-    assert len(body["patches"]) > 1
+
+def test_clone_multiple_returns_zip():
+    r = client.post(
+        "/api/device/clone", json={"patch_slot": 76, "snaptone_slots": [50, 51, 52]}
+    )
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/zip"
+    import io
+    import zipfile
+
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    assert len(zf.namelist()) == 3
 
 
-def test_usage_ir_unknown_slot_404():
-    resp = client.get("/api/device/usage/ir/999")
-    assert resp.status_code == 404
+def test_clone_bad_input_400():
+    assert (
+        client.post(
+            "/api/device/clone", json={"patch_slot": 76, "snaptone_slots": []}
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            "/api/device/clone", json={"patch_slot": 999, "snaptone_slots": [50]}
+        ).status_code
+        == 400
+    )
 
 
-def test_device_page_serves_mock_banner_and_hooks():
-    resp = client.get("/device")
-    assert resp.status_code == 200
-    assert "text/html" in resp.headers["content-type"]
-    html = resp.text
-
-    assert "MOCK DATA" in html
-    assert "not a live device read" in html
-
+def test_device_page_and_static_served():
+    html = client.get("/device").text
+    assert "parsed from exported patches" in html
     for hook in (
         'id="kind-snaptone"',
         'id="kind-ir"',
-        'id="item-select"',
+        'id="lib-list"',
         'id="usage-list"',
+        'id="clone-source"',
+        'id="clone-go"',
     ):
         assert hook in html, f"missing hook: {hook}"
-
-
-def test_device_page_static_js_served():
-    resp = client.get("/static/device.js")
-    assert resp.status_code == 200
-    assert "/api/device" in resp.text
+    assert "/api/device" in client.get("/static/device.js").text
 
 
 def test_nav_links_present_on_both_pages():
-    convert_html = client.get("/").text
-    device_html = client.get("/device").text
-    assert 'href="/device"' in convert_html
-    assert 'href="/"' in device_html
+    assert 'href="/device"' in client.get("/").text
+    assert 'href="/"' in client.get("/device").text

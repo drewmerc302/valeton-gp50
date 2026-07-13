@@ -12,43 +12,67 @@
       <a href="/">Convert</a>
       <a href="/device" class="active">Device Inspector</a>
     </nav>
-    <h1>Device Usage Inspector</h1>
-    <p class="subtitle">See which patches reference a SnapTone capture or IR/cab</p>
+    <h1>Device Inspector</h1>
+    <p class="subtitle">Browse SnapTones, IRs/cabs and patches &mdash; see what uses what, and clone patches onto other SnapTones</p>
   </header>
 
-  <div id="mock-banner" class="mock-banner" role="status">
-    MOCK DATA &mdash; not a live device read
-  </div>
+  <div id="source-note" class="source-note" role="status">parsed from exported patches</div>
 
   <main>
     <section class="card">
-      <h2>1. Pick a SnapTone or IR</h2>
-      <div class="config-grid">
-        <div class="field">
-          <label>Type</label>
-          <div class="format-toggle" id="kind-toggle">
-            <label class="radio-pill">
-              <input type="radio" name="kind" id="kind-snaptone" value="snaptone" checked />
-              SnapTone
-            </label>
-            <label class="radio-pill">
-              <input type="radio" name="kind" id="kind-ir" value="ir" />
-              IR / Cab
-            </label>
-          </div>
+      <div class="lib-head">
+        <div class="format-toggle" id="kind-toggle">
+          <label class="radio-pill">
+            <input type="radio" name="kind" id="kind-snaptone" value="snaptone" checked />
+            SnapTones <span id="ct-snaptone" class="hint"></span>
+          </label>
+          <label class="radio-pill">
+            <input type="radio" name="kind" id="kind-ir" value="ir" />
+            IRs / Cabs <span id="ct-ir" class="hint"></span>
+          </label>
         </div>
+        <input type="search" id="lib-search" placeholder="Filter&hellip;" class="lib-search" />
+      </div>
 
-        <div class="field">
-          <label for="item-select">Slot</label>
-          <select id="item-select"></select>
+      <div class="split">
+        <ul id="lib-list" class="lib-list" aria-label="library"></ul>
+        <div class="usage-pane">
+          <h2 id="usage-title">Select an item</h2>
+          <ul id="usage-list" class="file-list"></ul>
+          <p id="usage-empty" class="subtitle" hidden></p>
+          <button type="button" id="clone-onto" hidden>Clone a patch onto this SnapTone &rarr;</button>
         </div>
       </div>
     </section>
 
-    <section class="card" id="usage-section">
-      <h2>2. Patches using this</h2>
-      <ul id="usage-list" class="file-list"></ul>
-      <p id="usage-empty" class="subtitle" hidden>No patches reference this slot.</p>
+    <section class="card" id="clone-card">
+      <h2>Clone lab</h2>
+      <p class="subtitle">Copy one patch onto one or more SnapTones. Each clone is a ready-to-import <code>.prst</code> (CRC fixed). The target SnapTone must already be loaded on the device.</p>
+      <div class="config-grid">
+        <div class="field">
+          <label for="clone-source">Source patch</label>
+          <select id="clone-source"></select>
+        </div>
+        <div class="field">
+          <label>Target SnapTones
+            <button type="button" id="clone-all" class="linkish">all</button>
+            <button type="button" id="clone-none" class="linkish">none</button>
+          </label>
+          <div id="clone-targets" class="target-grid"></div>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" id="clone-go" disabled>Generate &amp; download</button>
+        <span id="clone-status" class="subtitle"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="lib-head">
+        <h2>All patches</h2>
+        <input type="search" id="patch-search" placeholder="Filter patches&hellip;" class="lib-search" />
+      </div>
+      <ul id="patch-list" class="file-list"></ul>
     </section>
   </main>
 

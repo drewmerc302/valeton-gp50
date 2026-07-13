@@ -372,3 +372,93 @@ button:disabled {
 .download-link:hover {
   text-decoration: underline;
 }
+
+/* --- Device Inspector --- */
+.source-note {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0.5rem 1.5rem;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.lib-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.lib-head h2 { margin: 0; }
+
+.lib-search {
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  min-width: 10rem;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 1rem;
+}
+@media (max-width: 620px) {
+  .split { grid-template-columns: 1fr; }
+}
+
+.lib-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 22rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.lib-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.lib-item:last-child { border-bottom: none; }
+.lib-item:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.lib-item.sel { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.lib-name { font-size: 0.9rem; }
+
+.usage-pane { min-width: 0; }
+.usage-pane h2 { margin: 0 0 0.5rem; font-size: 1.05rem; }
+
+.target-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+.badge.st {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+}
+
+.linkish {
+  border: none;
+  background: none;
+  padding: 0 0.35rem;
+  color: var(--accent);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.linkish:hover { text-decoration: underline; }

@@ -143,8 +143,9 @@ def test_convert_e2e_real_conversion(page, live_server, tmp_path):
         f"expected WaveNet architecture, got {nam_json.get('architecture')!r}"
     )
 
-    # --- 6. device inspector screenshot + MOCK banner ----------------------------
+    # --- 6. device inspector: real inventory renders + clone lab present ----------
     page.goto(live_server + "/device")
-    page.wait_for_selector("#mock-banner")
-    assert "MOCK" in page.inner_text("#mock-banner")
+    page.wait_for_selector("#lib-list .lib-item")
+    assert "exported patches" in page.inner_text("#source-note")
+    assert page.query_selector("#clone-source")  # clone lab present
     page.screenshot(path=str(SCREENSHOTS_DIR / "04-device.png"), full_page=True)

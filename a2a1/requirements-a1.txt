@@ -1,0 +1,3 @@
+# Stage 2 (train + export) venv — pinned because 0.13.0+ exports the 0.7.0 .nam
+# format, which the Valeton GP-50 rejects. 0.12.2 natively exports 0.5.x.
+neural-amp-modeler==0.12.2

@@ -1,0 +1,21 @@
+# venvs (recreate from requirements-*.txt)
+.venv/
+.venv-a1/
+.venv-midi/
+.venv-app/
+
+# runtime artifacts
+work/
+out/
+__pycache__/
+*.pyc
+*.jsonl
+*.log
+
+# large binary DI (download separately; see a2a1/README.md)
+refs/*.wav
+
+# app build output
+app/node_modules/
+app/.pytest_cache/
+.pytest_cache/

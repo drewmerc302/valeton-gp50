@@ -1,0 +1,2 @@
+# Stage 1 (render) venv — the ONLY version that can load A2 / SlimmableContainer.
+neural-amp-modeler==0.13.0

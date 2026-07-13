@@ -20,6 +20,18 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
+@pytest.fixture(autouse=True)
+def _pin_fixture_exports(monkeypatch):
+    """Tests use the presetExports fixtures deterministically, even when a local
+    device_scan/ (from a live scan) exists and would otherwise shadow them."""
+    from app import patchlib
+
+    monkeypatch.setattr(patchlib, "SCAN_DIR", str(PROJECT_ROOT / "_no_such_scan_dir"))
+    patchlib.reload()
+    yield
+    patchlib.reload()
+
+
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))

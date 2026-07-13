@@ -27,8 +27,17 @@ from typing import Optional, TypedDict
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXPORT_DIR = os.path.join(PROJECT_ROOT, "presetExports")
+SCAN_DIR = os.path.join(PROJECT_ROOT, "device_scan")  # populated by a live device scan
 FXID_RING = os.path.join(PROJECT_ROOT, "patch", "fxid_ring.json")
 BANK_MAP = os.path.join(PROJECT_ROOT, "patch", "bank_map.json")
+
+
+def _source_dir() -> str:
+    """Prefer a fresh device scan (device_scan/) over manual Suite exports."""
+    if glob.glob(os.path.join(SCAN_DIR, "*.prst")):
+        return SCAN_DIR
+    return EXPORT_DIR
+
 
 NS_CAT, CAB_CAT = 0x0F, 0x0A
 AMP_CATS = (0x07, 0x08)
@@ -296,7 +305,7 @@ def _cab_name(fxlow: int) -> Optional[str]:
 def _load() -> tuple:
     patches: list[Patch] = []
     raw: dict[int, bytes] = {}
-    for path in sorted(glob.glob(os.path.join(EXPORT_DIR, "*.prst"))):
+    for path in sorted(glob.glob(os.path.join(_source_dir(), "*.prst"))):
         b = open(path, "rb").read()
         recs = _model_block(b)
         ns = next((idx for idx, cat, _ in recs if cat == NS_CAT), 0)
@@ -485,7 +494,7 @@ def patches_using_ir(slot: int) -> list[Patch]:
 
 def patch_file(slot: int) -> Optional[str]:
     p = next((p for p in all_patches() if p["slot"] == slot), None)
-    return os.path.join(EXPORT_DIR, p["file"]) if p else None
+    return os.path.join(_source_dir(), p["file"]) if p else None
 
 
 # --- clone / edit (features 5/6): repoint a patch's SnapTone, refix the CRC ---

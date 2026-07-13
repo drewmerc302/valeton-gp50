@@ -26,6 +26,30 @@ def models(block: str) -> dict:
     return {"block": block, "models": patchlib.models_for_block(block)}
 
 
+_scan_reloaded = {"pending": False}
+
+
+@router.post("/scan")
+def scan() -> dict:
+    """Start a full device preset scan (~60-90s, one preset at a time — no bulk read
+    exists). Populates device_scan/ so the Explorer reflects the live device."""
+    result = device_io.scan_bank()
+    if result.get("ok"):
+        _scan_reloaded["pending"] = True
+    return result
+
+
+@router.get("/scan/status")
+def scan_status() -> dict:
+    """Poll scan progress. When the scan finishes, reload the inventory once so the
+    freshly-scanned patches appear."""
+    st = device_io.scan_status()
+    if _scan_reloaded["pending"] and not st.get("running"):
+        patchlib.reload()
+        _scan_reloaded["pending"] = False
+    return st
+
+
 @router.post("/sync")
 def sync() -> dict:
     """Live-read the SnapTone catalog from the pedal and refresh the inventory.

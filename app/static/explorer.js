@@ -703,15 +703,72 @@
   $("official-toggle").addEventListener("change", renderPresets);
   searchEl.addEventListener("input", render);
 
+  async function loadInventory() {
+    const [inv, fac] = await Promise.all([
+      fetch("/api/device/inventory").then((r) => r.json()),
+      fetch("/api/device/facets").then((r) => r.json()),
+    ]);
+    patches = inv.patches || [];
+    facets = fac;
+    if (inv.source) $("source-note").textContent = inv.source;
+  }
+
+  // --- scan all presets from the device (one at a time; no bulk read exists) -----
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function pollScan() {
+    const fill = $("scan-fill");
+    const status = $("scan-status");
+    for (;;) {
+      let st;
+      try {
+        st = await fetch("/api/device/scan/status").then((r) => r.json());
+      } catch {
+        await sleep(1000);
+        continue;
+      }
+      const pct = st.total ? Math.round((st.done / st.total) * 100) : 0;
+      fill.style.width = `${pct}%`;
+      status.textContent = st.error
+        ? `Scan failed: ${st.error}`
+        : `Scanning ${st.done}/${st.total}${st.current ? ` — ${st.current}` : ""}${st.errors ? ` (${st.errors} skipped)` : ""}`;
+      if (!st.running) {
+        if (!st.error) {
+          status.textContent = `Scanned ${st.written || st.done} presets${st.errors ? `, ${st.errors} skipped` : ""}. Loading…`;
+          await loadInventory();
+          await loadModelsAndLib();
+          buildFilterBar();
+          render();
+          status.textContent = `✓ Loaded ${patches.length} presets from the device.`;
+        }
+        $("scan-btn").disabled = false;
+        return;
+      }
+      await sleep(700);
+    }
+  }
+
+  async function startScan() {
+    if (!confirm("Scan all 100 presets from the device? This reads them one at a time (~60–90s) and briefly cycles the pedal through each preset. Close Valeton Suite first.")) return;
+    $("scan-btn").disabled = true;
+    $("scan-progress").hidden = false;
+    $("scan-fill").style.width = "0%";
+    $("scan-status").textContent = "Starting…";
+    try {
+      const r = await fetch("/api/device/scan", { method: "POST" }).then((x) => x.json());
+      if (!r.ok) throw new Error(r.error || "could not start scan");
+      pollScan();
+    } catch (e) {
+      $("scan-status").textContent = `Failed: ${e.message}`;
+      $("scan-btn").disabled = false;
+    }
+  }
+
+  $("scan-btn").addEventListener("click", startScan);
+
   async function init() {
     try {
-      const [inv, fac] = await Promise.all([
-        fetch("/api/device/inventory").then((r) => r.json()),
-        fetch("/api/device/facets").then((r) => r.json()),
-      ]);
-      patches = inv.patches || [];
-      facets = fac;
-      if (inv.source) $("source-note").textContent = inv.source;
+      await loadInventory();
     } catch (e) {
       $("source-note").textContent = `Could not load presets: ${e.message}`;
       return;

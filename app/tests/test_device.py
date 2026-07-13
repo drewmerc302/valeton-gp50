@@ -302,6 +302,42 @@ def test_write_endpoint_applies_edits_and_writes(monkeypatch):
     assert d[patchlib.CRC_OFF] == patchlib._crc8(d[patchlib.CRC_OFF + 1 :])
 
 
+def test_scan_endpoints(monkeypatch):
+    # hermetic: fake the background scan + status (no MIDI/subprocess)
+    from app import device_io
+
+    monkeypatch.setattr(device_io, "scan_bank", lambda: {"ok": True, "started": True})
+    r = client.post("/api/device/scan").json()
+    assert r["ok"] and r["started"]
+
+    states = iter(
+        [
+            {
+                "running": True,
+                "done": 40,
+                "total": 100,
+                "current": "Metal Lica",
+                "errors": 0,
+                "written": 0,
+                "error": None,
+            },
+            {
+                "running": False,
+                "done": 100,
+                "total": 100,
+                "current": "US Lead",
+                "errors": 0,
+                "written": 100,
+                "error": None,
+            },
+        ]
+    )
+    monkeypatch.setattr(device_io, "scan_status", lambda: next(states))
+    assert client.get("/api/device/scan/status").json()["running"] is True
+    final = client.get("/api/device/scan/status").json()
+    assert final["running"] is False and final["written"] == 100
+
+
 def test_sync_endpoint_reports_device_result(monkeypatch):
     # hermetic: fake the device read (no MIDI, no subprocess)
     from app import device_io

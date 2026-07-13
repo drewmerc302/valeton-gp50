@@ -16,6 +16,7 @@ __pycache__/
 *.jsonl
 *.log
 block_library.json
+device_scan/
 
 # large binary DI (download separately; see a2a1/README.md)
 refs/*.wav

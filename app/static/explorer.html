@@ -19,6 +19,14 @@
 
   <div id="source-note" class="source-note" role="status">parsed from exported patches</div>
 
+  <div class="scan-row">
+    <button type="button" id="scan-btn">⟳ Scan presets from device</button>
+    <div id="scan-progress" class="scan-progress" hidden>
+      <div class="scan-bar"><div id="scan-fill" class="scan-fill"></div></div>
+      <span id="scan-status" class="subtitle"></span>
+    </div>
+  </div>
+
   <main class="explorer-main">
     <section class="card filter-card">
       <div class="lib-head">

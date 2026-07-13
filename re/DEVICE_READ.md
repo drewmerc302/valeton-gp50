@@ -23,29 +23,35 @@ name (`0x40`) + body (`0x41`). The `.prst` layout:
 `rebuild(name, body)` reproduces all 100 exported `.prst` files **byte-for-byte
 (100/100)**, and reproduced the live `0x41` read of the active patch (US Lead).
 
-## The gap
+## Reading arbitrary slots — SOLVED (2026-07-13)
 
-`0x41` returns the **active** patch only. Reading an arbitrary slot needs the preset
-selected first, and the active slot's identity (to fetch its name) isn't read yet.
-- Request `buf[2]` (index) is NOT the slot: `0` returns the active body; other values
-  error (`14 08 00`) or return nothing.
-- **Program Change did not work and coincided with a wedge** — but the wedge was
-  almost certainly the probe opening/closing the MIDI port per message in a tight loop
-  (8+ cycles fast), not the PC itself. Recovered with the magic-button force-shutdown.
+`0x41` returns the **active** patch only. To read a specific slot: **MIDI Program
+Change selects the preset**, then `0x41` reads it. Confirmed: PC 2 -> `0x41` returned
+an exact match for `02-Star Night.prst`.
 
-## Rules (learned twice now)
-- One persistent port. One request. SETTLE between. NEVER a tight open/close loop.
-- `patch/pc_read.py` was deleted: it cycled ports per message and wedged the pedal.
+- Request `buf[2]` (index) is NOT the slot, and a slot byte in the payload
+  (`[0x12,0x41,slot]`) is ignored — `0x41` always yields the active patch.
+- **There is NO bulk-body read.** Even Valeton Suite's own "select all -> export"
+  loops one preset at a time at ~1 s each (user-observed). Reading the full bank is
+  inherently N single reads.
+- **Cadence:** ~0.15 s post-PC settle RACES (bodies merge, corrupt); 0.25 s is clean;
+  the scanner uses 0.30 s + a 511-byte length check with one retry. ~65-90 s for 100.
 
-## Next (careful) experiments to close the gap
-1. Single persistent in+out port: send ONE Program Change, wait ~1s, read `0x41` once,
-   compare the rebuilt `.prst` to that slot's export. If bodies change with PC, full
-   export = loop {PC n; settle; read 0x41} for n in 0..99.
-2. If PC doesn't switch the active patch, look for a slot-parameterized body read
-   (e.g. slot in the request payload `[0x12, 0x41, slot]`) — decoded from a Suite
-   "read patch N" capture, same as the write was.
+## Rules (learned twice)
+- One persistent port for the whole run. One request at a time. SETTLE between. NEVER
+  a tight open/close-per-message loop — that (not Program Change) wedged the pedal.
+- Deleted `patch/pc_read.py`: it cycled ports per message and wedged the pedal.
+
+## Shipped
+- `patch/scan_bank.py` — full-bank scanner: per slot {PC; settle; read 0x41; rebuild};
+  emits JSON progress; writes .prst to `device_scan/`. Verified live: 100/100, 0 errors.
+- App: `POST /api/device/scan` + `GET /api/device/scan/status`; patchlib prefers
+  `device_scan/` over `presetExports/`; Explorer "Scan presets from device" button
+  with progress bar + confirm disclaimer.
 
 ## Files
 - `patch/reconstruct_prst.py` — rebuild(name, body) -> .prst (+ 100/100 self-check).
-- `patch/probe_bodies.py`, `read_body.py`, `decode_body.py`, `save_active_body.py` —
-  read/decode probes (single-request, safe).
+- `patch/scan_bank.py` — production scanner.
+- `patch/cadence_test.py` — settle-timing probe (single persistent port).
+- `patch/probe_bodies.py`, `read_body.py`, `decode_body.py`, `save_active_body.py`,
+  `slot_body_read.py`, `pc_select_read.py` — read/decode probes (single-request, safe).

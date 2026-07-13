@@ -395,6 +395,24 @@ button:disabled {
   gap: 0.75rem;
 }
 
+.scan-row {
+  margin: 0.6rem auto 0;
+  padding: 0 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+#scan-btn {
+  font: inherit; font-size: 0.85rem; cursor: pointer;
+  border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text); border-radius: 6px; padding: 0.35rem 0.8rem;
+}
+#scan-btn:disabled { opacity: 0.5; cursor: default; }
+.scan-progress { display: flex; align-items: center; gap: 0.6rem; flex: 1 1 320px; min-width: 240px; }
+.scan-bar { flex: 1 1 auto; height: 8px; border-radius: 999px; background: var(--track); overflow: hidden; }
+.scan-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.3s ease; }
+
 .lib-head {
   display: flex;
   align-items: center;

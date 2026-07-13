@@ -1,0 +1,30 @@
+{
+  "source": "live device read (selector 0x24 model catalog)",
+  "snaptone": {
+    "50": "MES LS II",
+    "51": "BCAT ER30",
+    "52": "CSTEN RACE",
+    "53": "DWOOD DNIG",
+    "54": "FNDR BFPRO",
+    "55": "GBSN G20 I",
+    "57": "LANY SGRP",
+    "58": "MRSH JM50L",
+    "59": "MRSH MJR I",
+    "61": "PRSM ARC L",
+    "62": "SD DRAGON",
+    "63": "SHR BELL C",
+    "64": "TK ROY 67",
+    "65": "TK ROY 67",
+    "67": "VX UL10 Ed",
+    "69": "Atrisan 30",
+    "71": "waveneta1s",
+    "72": "Blackstar",
+    "73": "Blackstar",
+    "74": "Series 1",
+    "75": "A2",
+    "76": "Series 1",
+    "77": "A2",
+    "78": "Blackstar",
+    "79": "Blackstar"
+  }
+}

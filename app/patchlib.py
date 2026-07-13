@@ -125,15 +125,16 @@ def _load() -> tuple:
             )
         )
 
-    # SnapTone identity: label each used N->S slot by the patches that use it,
-    # overridden by authoritative device names from bank_map.json when present.
+    # SnapTone identity: union of (slots referenced by patches) and (all populated
+    # device slots from bank_map.json). Device names are authoritative; slots that
+    # no patch references (orphans) still appear so they can be clone targets.
     dev = _bank_labels()
     used: dict[int, list[str]] = {}
     for p in patches:
         if p["snaptone_slot"]:
             used.setdefault(p["snaptone_slot"], []).append(p["name"])
     snaptones: list[SnapTone] = []
-    for slot in sorted(used):
+    for slot in sorted(set(used) | set(dev)):
         label = dev.get(slot) or "/".join(sorted(used[slot]))
         snaptones.append(SnapTone(slot=slot, name=label))
     slot_label = {s["slot"]: s["name"] for s in snaptones}

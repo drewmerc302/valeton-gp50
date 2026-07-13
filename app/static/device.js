@@ -36,19 +36,27 @@
       : `${p.amp_name} · ${p.ir_name}`;
   }
 
+  const USER_IR_BASE = 0x100000;
+  function slotLabel(it) {
+    // User IR slots use a big fxid-derived index; show "User IR N" instead
+    if (it.is_user_ir || it.slot >= USER_IR_BASE)
+      return `User IR ${it.slot - USER_IR_BASE + 1}`;
+    return `#${it.slot}`;
+  }
+
   function renderLib() {
     const k = kind();
     const q = libSearch.value.trim().toLowerCase();
     libList.innerHTML = "";
     items(k)
-      .filter((it) => !q || `${it.slot} ${it.name}`.toLowerCase().includes(q))
+      .filter((it) => !q || `${slotLabel(it)} ${it.name}`.toLowerCase().includes(q))
       .forEach((it) => {
         const li = document.createElement("li");
         li.className = "lib-item";
         if (selected && selected.kind === k && selected.slot === it.slot)
           li.classList.add("sel");
         const n = usageCount(k, it.slot);
-        li.innerHTML = `<span class="lib-name">#${it.slot} ${it.name}</span>` +
+        li.innerHTML = `<span class="lib-name">${slotLabel(it)} ${it.name}</span>` +
           `<span class="badge">${n} patch${n === 1 ? "" : "es"}</span>`;
         li.addEventListener("click", () => selectItem(k, it.slot));
         libList.appendChild(li);

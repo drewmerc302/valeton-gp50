@@ -25,6 +25,21 @@ def clean_origin(o: str) -> str:
     return o
 
 
+def resolve_origin(entry: dict) -> str:
+    """Official gear name. Some origins drop the channel (e.g. Foxy 30N and
+    Foxy 30TB are both 'VOX AC30'); recover it from the description's
+    '(... channel)' hint when the origin has no parenthetical of its own."""
+    o = clean_origin(entry.get("origin"))
+    if not o or "(" in o:
+        return o
+    desc = re.sub(r"<[^>]+>", "", entry.get("descriptionEn") or "")
+    m = re.search(r"\(([^)]*?)\s*channel\)", desc, re.I)
+    if m:
+        chan = m.group(1).strip().title()  # "normal" -> "Normal", "Top Boost"
+        return f"{o} ({chan})"
+    return o
+
+
 def unit_from_range(rng: str) -> str:
     """Extract a display unit from a valueRange like '0.10Hz-10.00Hz' -> 'Hz',
     '0-1000ms' -> 'ms'. Returns '' for plain numeric or Off/On ranges."""
@@ -70,7 +85,7 @@ def main():
                 "name": e.get("name"),
                 "fxtitle": e.get("fxtitle"),
                 "type": e.get("type"),
-                "origin": clean_origin(e.get("origin")),
+                "origin": resolve_origin(e),
                 "params": params_of(e),
             }
     json.dump({str(k): v for k, v in ring.items()}, open(OUT, "w"))

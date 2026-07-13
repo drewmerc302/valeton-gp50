@@ -413,6 +413,19 @@ button:disabled {
 .scan-bar { flex: 1 1 auto; height: 8px; border-radius: 999px; background: var(--track); overflow: hidden; }
 .scan-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.3s ease; }
 
+.slot-actions {
+  display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;
+  margin: 0.15rem 0 0.35rem 1.6rem;
+}
+.slot-act {
+  font: inherit; font-size: 0.72rem; cursor: pointer;
+  border: 1px solid var(--border); background: var(--track); color: var(--muted);
+  border-radius: 5px; padding: 0.12rem 0.5rem;
+}
+.slot-act:hover { border-color: var(--accent); color: var(--text); }
+.slot-act.paste { border-color: var(--accent); color: var(--text); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.slot-act.swap-sel { color: var(--text); }
+
 .lib-head {
   display: flex;
   align-items: center;

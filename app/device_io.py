@@ -140,11 +140,30 @@ def write_patch(prst: bytes, slot: int, timeout: float = 30.0) -> dict:
             result["error"] = (
                 "pedal not found — connect it via USB and close Valeton Suite"
             )
+        if result.get("ok"):
+            _cache_write(
+                slot, prst
+            )  # keep the local scan cache in sync with the device
         return result
     finally:
         if tmp and os.path.exists(tmp):
             os.remove(tmp)
         _lock.release()
+
+
+def _cache_write(slot: int, prst: bytes) -> None:
+    """Mirror a device write into the device_scan/ cache so the Explorer reflects it
+    without a re-scan. No-op unless a scan cache already exists."""
+    import glob
+
+    if not glob.glob(os.path.join(SCAN_DIR, "*.prst")):
+        return
+    name = prst[0x19:0x29].split(b"\0")[0].decode("latin1", "replace") or f"slot{slot}"
+    safe = "".join(c if c.isalnum() or c in " -_" else "_" for c in name)
+    for old in glob.glob(os.path.join(SCAN_DIR, f"{slot:02d}-*.prst")):
+        os.remove(old)
+    with open(os.path.join(SCAN_DIR, f"{slot:02d}-{safe}.prst"), "wb") as f:
+        f.write(prst)
 
 
 def scan_status() -> dict:

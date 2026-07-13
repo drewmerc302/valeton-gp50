@@ -581,6 +581,93 @@
     }
   }
 
+  // --- slot management: copy/paste + swap (device writes) --------------------
+  let clipboard = null; // {slot, name} of a copied preset
+
+  function slotName(slot) {
+    const p = patches.find((x) => x.slot === slot);
+    return p ? p.name : "(empty)";
+  }
+
+  async function refreshAfterSlotOp() {
+    await loadInventory();
+    render();
+  }
+
+  function copyPreset(p) {
+    clipboard = { slot: p.slot, name: p.name };
+    renderPresets(); // paste buttons appear on other slots
+  }
+
+  async function pastePreset(target) {
+    if (!clipboard) return;
+    if (clipboard.slot === target.slot) return;
+    if (!confirm(`Overwrite slot ${target.slot} "${target.name}" with "${clipboard.name}" (from slot ${clipboard.slot})? Writes to the pedal. Close Valeton Suite first.`)) return;
+    try {
+      const r = await fetch("/api/device/write", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patch_slot: clipboard.slot, target_slot: target.slot, confirm: true }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.detail || j.error || `HTTP ${r.status}`);
+      await refreshAfterSlotOp();
+    } catch (e) {
+      alert(`Paste failed: ${e.message}`);
+    }
+  }
+
+  async function swapPreset(p, otherSlot) {
+    if (otherSlot === p.slot) return;
+    if (!confirm(`Swap slot ${p.slot} "${p.name}" ⇄ slot ${otherSlot} "${slotName(otherSlot)}"? Non-destructive, but writes both to the pedal. Close Valeton Suite first.`)) return;
+    try {
+      const r = await fetch("/api/device/swap", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slot_a: p.slot, slot_b: otherSlot, confirm: true }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.detail || j.error || `HTTP ${r.status}`);
+      await refreshAfterSlotOp();
+    } catch (e) {
+      alert(`Swap failed: ${e.message}`);
+    }
+  }
+
+  function slotActions(p) {
+    const row = document.createElement("div");
+    row.className = "slot-actions";
+    const stop = (fn) => (ev) => { ev.stopPropagation(); fn(); };
+
+    const copy = document.createElement("button");
+    copy.type = "button"; copy.className = "slot-act";
+    copy.textContent = clipboard && clipboard.slot === p.slot ? "⧉ Copied" : "⧉ Copy";
+    copy.title = "Copy this preset to the clipboard";
+    copy.addEventListener("click", stop(() => copyPreset(p)));
+    row.appendChild(copy);
+
+    if (clipboard && clipboard.slot !== p.slot) {
+      const paste = document.createElement("button");
+      paste.type = "button"; paste.className = "slot-act paste";
+      paste.textContent = `📋 Paste "${clipboard.name}"`;
+      paste.title = `Overwrite slot ${p.slot} with the copied preset`;
+      paste.addEventListener("click", stop(() => pastePreset(p)));
+      row.appendChild(paste);
+    }
+
+    const sw = document.createElement("select");
+    sw.className = "slot-act swap-sel";
+    sw.innerHTML = `<option value="">⇄ Swap with…</option>` +
+      patches.filter((x) => x.slot !== p.slot)
+        .map((x) => `<option value="${x.slot}">#${x.slot} ${x.name}</option>`).join("");
+    sw.addEventListener("click", (ev) => ev.stopPropagation());
+    sw.addEventListener("change", () => {
+      const other = Number(sw.value);
+      sw.value = "";
+      if (!Number.isNaN(other)) swapPreset(p, other);
+    });
+    row.appendChild(sw);
+    return row;
+  }
+
   async function writeToDevice(p) {
     const e = getEdit(p.slot);
     const note = listEl.querySelector(`.save-bar[data-slot="${p.slot}"] .save-note`);
@@ -643,6 +730,7 @@
         chips.innerHTML = '<span class="subtitle">empty preset</span>';
       li.appendChild(head);
       li.appendChild(chips);
+      li.appendChild(slotActions(p));
       if (isOpen) li.appendChild(renderDetail(p));
       listEl.appendChild(li);
     });

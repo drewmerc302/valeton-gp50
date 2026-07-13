@@ -198,6 +198,41 @@ def write_to_device(req: WriteRequest) -> dict:
     return result
 
 
+class SwapRequest(BaseModel):
+    slot_a: int
+    slot_b: int
+    confirm: bool = False
+
+
+@router.post("/swap")
+def swap(req: SwapRequest) -> dict:
+    """Swap two device slots (A<->B), non-destructive. Reads both bodies first, then
+    writes each into the other's slot. Requires confirm=True."""
+    if not req.confirm:
+        raise HTTPException(400, "refusing to swap: confirm=true required")
+    if req.slot_a == req.slot_b:
+        raise HTTPException(400, "pick two different slots")
+    fa, fb = patchlib.patch_file(req.slot_a), patchlib.patch_file(req.slot_b)
+    if not fa or not fb:
+        raise HTTPException(404, "one or both slots are not in the inventory")
+    body_a, body_b = open(fa, "rb").read(), open(fb, "rb").read()  # read both up front
+    r1 = device_io.write_patch(body_a, req.slot_b)
+    if not r1.get("ok"):
+        return {
+            "ok": False,
+            "error": f"swap aborted before any change: {r1.get('error')}",
+        }
+    r2 = device_io.write_patch(body_b, req.slot_a)
+    patchlib.reload()
+    if not r2.get("ok"):
+        return {
+            "ok": False,
+            "error": f"HALF-SWAPPED: slot {req.slot_b} updated but slot {req.slot_a} "
+            f"write failed ({r2.get('error')}). Re-run to finish.",
+        }
+    return {"ok": True, "slot_a": req.slot_a, "slot_b": req.slot_b}
+
+
 @router.post("/edit")
 def edit(req: EditRequest) -> Response:
     """Apply parameter / bypass / patch-setting edits and return the edited .prst

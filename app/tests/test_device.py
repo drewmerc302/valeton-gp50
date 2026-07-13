@@ -302,6 +302,43 @@ def test_write_endpoint_applies_edits_and_writes(monkeypatch):
     assert d[patchlib.CRC_OFF] == patchlib._crc8(d[patchlib.CRC_OFF + 1 :])
 
 
+def test_swap_requires_confirm_and_distinct():
+    assert (
+        client.post("/api/device/swap", json={"slot_a": 1, "slot_b": 2}).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            "/api/device/swap", json={"slot_a": 1, "slot_b": 1, "confirm": True}
+        ).status_code
+        == 400
+    )
+
+
+def test_swap_writes_both_bodies(monkeypatch):
+    # hermetic: capture the (bytes, slot) pairs handed to the device
+    from app import device_io, patchlib
+
+    calls = []
+
+    def fake_write(prst, slot, timeout=30.0):
+        calls.append(
+            (slot, len(prst), prst[0x19:0x29].split(b"\0")[0].decode("latin1"))
+        )
+        return {"ok": True, "sent": True, "acks": 29}
+
+    monkeypatch.setattr(device_io, "write_patch", fake_write)
+    assert patchlib.patch_file(15) and patchlib.patch_file(3)  # fixtures exist
+    r = client.post(
+        "/api/device/swap", json={"slot_a": 15, "slot_b": 3, "confirm": True}
+    )
+    assert r.status_code == 200 and r.json()["ok"]
+    # two writes: slot_a's body -> slot_b, and slot_b's body -> slot_a
+    targets = sorted(c[0] for c in calls)
+    assert targets == [3, 15]
+    assert all(c[1] == 552 for c in calls)
+
+
 def test_scan_endpoints(monkeypatch):
     # hermetic: fake the background scan + status (no MIDI/subprocess)
     from app import device_io

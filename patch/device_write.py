@@ -38,6 +38,32 @@ def build_packet(cmd: int, index: int, payload: bytes) -> list:
     return wire
 
 
+PATCH_WRITE_CMD = 0x1D  # host->device patch write (decoded from Suite import captures)
+PATCH_BLOCK = 19  # payload bytes per write block
+PATCH_HDR = bytes([0x11, 0x4F])  # constant marker before the slot byte
+
+
+def build_patch_write_stream(prst: bytes, slot: int) -> list:
+    """Reconstruct Suite's exact patch-import stream for writing `prst` to `slot`.
+
+    Validated byte-for-byte (29/29) against two real Suite captures (US Lead ->
+    slots 1 and 99). Format:
+      device_payload = [0x11, 0x4F, slot, 0x00, 0x00, 0x00] + prst[0x19:]
+      (the 6-byte header replaces the .prst body's leading FF FF FF FF sentinel;
+       `slot` is the 0-based device index)
+    streamed as PATCH_WRITE_CMD in 19-byte blocks, index 0..N.
+    Returns wire-byte packets (each incl F0/F7). Does NOT send — see send_stream."""
+    if not 0 <= slot <= 0xFF:
+        raise ValueError(f"slot out of range: {slot}")
+    if len(prst) != 552:
+        raise ValueError(f"expected a 552-byte .prst, got {len(prst)}")
+    payload = PATCH_HDR + bytes([slot, 0x00, 0x00, 0x00]) + prst[0x19:]
+    return [
+        build_packet(PATCH_WRITE_CMD, i // PATCH_BLOCK, payload[i : i + PATCH_BLOCK])
+        for i in range(0, len(payload), PATCH_BLOCK)
+    ]
+
+
 def _nib_decode(mid):
     return [(mid[i] << 4) | mid[i + 1] for i in range(0, len(mid) - 1, 2)]
 
@@ -67,19 +93,35 @@ def verify_against_capture(path: str) -> tuple:
     return ok, bad
 
 
-def send_stream(port_name, packets, confirm=False, validated=False):
+def send_stream(port_name, packets, confirm=False, validated=False, ack_wait=0.15):
     """Send pre-built, VALIDATED packets to the device. Refuses otherwise.
-    packets: list of wire-byte lists. Requires confirm=True and validated=True."""
+
+    packets: list of wire-byte lists. Requires confirm=True and validated=True.
+    Paces like Suite: after each block, wait for the device's ACK sysex (up to
+    ack_wait s) before the next block — the device has a shallow MIDI queue and
+    overrunning it has wedged the pedal. Returns the count of ACKs seen."""
     if not (confirm and validated):
         raise RuntimeError(
             "refusing to send: device writes require confirm=True and packets "
             "validated byte-for-byte against a Suite capture (see re/DEVICE_WRITE.md)"
         )
+    import time
     import mido  # noqa: local import so the builder works without MIDI installed
 
-    with mido.open_output(port_name) as out:
+    acks = 0
+    with mido.open_input(port_name) as inp, mido.open_output(port_name) as out:
+        time.sleep(0.1)
+        for _ in inp.iter_pending():
+            pass  # drain
         for w in packets:
             out.send(mido.Message("sysex", data=w[1:-1]))
+            t0 = time.time()
+            while time.time() - t0 < ack_wait:
+                if any(m.type == "sysex" for m in inp.iter_pending()):
+                    acks += 1
+                    break
+                time.sleep(0.005)
+    return acks
 
 
 if __name__ == "__main__":

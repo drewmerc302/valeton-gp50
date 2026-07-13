@@ -140,6 +140,25 @@ def test_edit_leaves_other_params_untouched():
     assert diffs == [2 * 8 + 0]
 
 
+def test_patch_write_stream_reproduces_suite_capture():
+    """The patch-write builder must reproduce Suite's real import stream byte-for-byte
+    (regression lock on the cracked 0x1D protocol). No device I/O."""
+    from patch import device_write
+    from patch.decode_import_capture import WRITE
+
+    prst = open(patchlib.patch_file(15), "rb").read()  # US Lead source
+    built = device_write.build_patch_write_stream(prst, 0)  # Suite "slot 1" = index 0
+    captured = [[int(x, 16) for x in line.split()] for line in WRITE]
+    assert built == captured  # 29 packets, exact wire match
+    # slot byte lives at payload[2] of block 0; changing slot changes only that byte
+    b0, b90 = (
+        device_write.build_patch_write_stream(prst, 0),
+        device_write.build_patch_write_stream(prst, 90),
+    )
+    assert b0[1:] == b90[1:]  # body blocks unchanged
+    assert b0[0] != b90[0]  # header block differs (slot + its CRC)
+
+
 def test_block_detail_carries_fxid_roundtrips_to_catalog():
     from app import patchlib
 

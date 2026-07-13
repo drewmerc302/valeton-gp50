@@ -167,6 +167,11 @@ def _params_for(entry: Optional[dict], floats: list, block_index: int) -> list:
                 "value": round(val, 2),
                 "display": _fmt_param(val, p["toggle"], p.get("unit", "")),
                 "toggle": p["toggle"],
+                "unit": p.get("unit", ""),
+                "algId": p["algId"],
+                "min": p.get("min", 0),
+                "max": p.get("max", 100),
+                "step": p.get("step", 1),
             }
         )
     return out
@@ -449,3 +454,58 @@ def clone_with_snaptone(patch_slot: int, target_ns_slot: int) -> tuple[str, byte
     stem = os.path.basename(src).replace(".prst", "")
     safe = re.sub(r"[^A-Za-z0-9]+", "", label)[:12]
     return f"{stem}__{safe}.prst", bytes(b)
+
+
+def apply_edits(patch_slot: int, edits: dict) -> tuple[str, bytes]:
+    """Produce an edited .prst (for Suite re-import — never a device write) with
+    changed parameter values, block bypass states, and patch VOL/BPM. CRC refixed.
+
+    edits = {
+      "params":   {block_index: {algId: value}},   # float param values
+      "bypass":   {block_index: bool},              # block on/off
+      "settings": {"patch_vol": int, "bpm": int},
+    }
+    """
+    src = patch_file(patch_slot)
+    if src is None:
+        raise ValueError(f"unknown patch slot {patch_slot}")
+    b = bytearray(open(src, "rb").read())
+
+    # 1. parameter floats (record 04 30, 10 blocks x 8 slots)
+    fi = b.find(bytes([0x04, 0x30, 0x40, 0x01]))
+    if fi < 0 and edits.get("params"):
+        raise ValueError("no parameter array in patch")
+    base = fi + 4
+    for blk, params in (edits.get("params") or {}).items():
+        for alg, value in params.items():
+            slot = int(blk) * 8 + int(alg)
+            if 0 <= slot < 80:
+                struct.pack_into("<f", b, base + slot * 4, float(value))
+
+    # 2. bypass bitmask (record 01 30)
+    mi = b.find(bytes([0x01, 0x30, 0x04, 0x00]))
+    if mi >= 0 and edits.get("bypass"):
+        mask = struct.unpack_from("<I", b, mi + 4)[0]
+        for blk, on in edits["bypass"].items():
+            bit = 1 << int(blk)
+            mask = (mask | bit) if on else (mask & ~bit)
+        struct.pack_into("<I", b, mi + 4, mask & 0xFFFFFFFF)
+
+    # 3. patch-level settings (group 0x20 records: id1 VOL 1-byte, id2 BPM 4-byte)
+    s = edits.get("settings") or {}
+    if s:
+        i = 0x55
+        while i + 4 <= len(b) and b[i + 1] == 0x20:
+            rid = b[i]
+            ln = struct.unpack_from("<H", b, i + 2)[0]
+            if ln not in (1, 2, 4):
+                break
+            if rid == 0x01 and "patch_vol" in s and ln == 1:
+                b[i + 4] = max(0, min(100, int(s["patch_vol"])))
+            elif rid == 0x02 and "bpm" in s and ln == 4:
+                struct.pack_into("<i", b, i + 4, int(s["bpm"]))
+            i += 4 + ln
+
+    b[CRC_OFF] = _crc8(b[CRC_OFF + 1 :])
+    stem = os.path.basename(src).replace(".prst", "")
+    return f"{stem}__edited.prst", bytes(b)

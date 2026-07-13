@@ -171,49 +171,167 @@
   }
 
   const expanded = new Set(); // preset slots currently expanded
+  const edits = new Map(); // slot -> {params:{blk:{alg:val}}, bypass:{blk:bool}, settings:{}}
 
   function blockLabel(b) {
     return officialOn() && b.official ? b.label_official : b.label;
   }
 
+  function getEdit(slot) {
+    if (!edits.has(slot)) edits.set(slot, { params: {}, bypass: {}, settings: {} });
+    return edits.get(slot);
+  }
+  function isDirty(slot) {
+    const e = edits.get(slot);
+    return e && (Object.keys(e.params).length || Object.keys(e.bypass).length || Object.keys(e.settings).length);
+  }
+  // current value for a param (pending edit wins over stored value)
+  function curVal(slot, blkIdx, pr) {
+    const e = edits.get(slot);
+    const v = e && e.params[blkIdx] && e.params[blkIdx][pr.algId];
+    return v !== undefined ? v : pr.value;
+  }
+  function fmtParam(pr, value) {
+    if (pr.toggle) return Math.round(value) ? "On" : "Off";
+    const v = Math.abs(value - Math.round(value)) < 1e-4 ? String(Math.round(value)) : value.toFixed(2);
+    return pr.unit ? `${v} ${pr.unit}` : v;
+  }
+
   function renderDetail(p) {
     const d = document.createElement("div");
     d.className = "preset-detail";
-    // patch settings
+
+    // patch settings (editable VOL + BPM)
     const s = p.settings || {};
-    const settingBits = [];
-    if (s.patch_vol !== undefined) settingBits.push(`Patch VOL <b>${s.patch_vol}</b>`);
-    if (s.bpm !== undefined) settingBits.push(`BPM <b>${s.bpm}</b>`);
-    if (settingBits.length) {
+    const e = getEdit(p.slot);
+    if (s.patch_vol !== undefined || s.bpm !== undefined) {
       const ps = document.createElement("div");
       ps.className = "patch-settings";
-      ps.innerHTML = settingBits.join(" &nbsp;·&nbsp; ");
+      const mk = (label, key, min, max, cur) => {
+        const wrap = document.createElement("label");
+        wrap.className = "patch-set";
+        const val = e.settings[key] !== undefined ? e.settings[key] : cur;
+        wrap.innerHTML = `<span>${label}</span>`;
+        const inp = document.createElement("input");
+        inp.type = "range"; inp.min = min; inp.max = max; inp.step = 1; inp.value = val;
+        const out = document.createElement("b"); out.textContent = val;
+        inp.addEventListener("input", () => {
+          out.textContent = inp.value;
+          e.settings[key] = Number(inp.value);
+          refreshSaveBar(p);
+        });
+        wrap.appendChild(inp); wrap.appendChild(out);
+        return wrap;
+      };
+      if (s.patch_vol !== undefined) ps.appendChild(mk("Patch VOL", "patch_vol", 0, 100, s.patch_vol));
+      if (s.bpm !== undefined) ps.appendChild(mk("BPM", "bpm", 40, 300, s.bpm));
       d.appendChild(ps);
     }
-    // every block, active first-class + bypassed dimmed
-    p.blocks.forEach((b) => {
-      if (!b.model && !b.params.length) return; // skip truly empty slots
+
+    // per-block: bypass toggle + editable params
+    p.blocks.forEach((b, blkIdx) => {
+      if (!b.model && !b.params.length) return;
       const bd = document.createElement("div");
-      bd.className = "block-detail" + (b.active ? "" : " bypassed");
-      const state = b.active ? "on" : "off";
-      const chipCls = `chip blk-${b.block.replace(/[^a-z]/gi, "").toLowerCase()}`;
-      bd.innerHTML =
-        `<div class="block-detail-head"><span class="${chipCls}">${blockLabel(b)}</span>` +
-        `<span class="state ${state}">${state}</span></div>`;
+      bd.className = "block-detail";
+      const active = e.bypass[blkIdx] !== undefined ? e.bypass[blkIdx] : b.active;
+      if (!active) bd.classList.add("bypassed");
+
+      const head = document.createElement("div");
+      head.className = "block-detail-head";
+      head.innerHTML = `<span class="chip blk-${b.block.replace(/[^a-z]/gi, "").toLowerCase()}">${blockLabel(b)}</span>`;
+      const sw = document.createElement("button");
+      sw.type = "button";
+      sw.className = "state-toggle " + (active ? "on" : "off");
+      sw.textContent = active ? "on" : "off";
+      sw.title = "Toggle block on/off";
+      sw.addEventListener("click", () => {
+        const next = !(e.bypass[blkIdx] !== undefined ? e.bypass[blkIdx] : b.active);
+        e.bypass[blkIdx] = next;
+        renderPresets();
+      });
+      head.appendChild(sw);
+      bd.appendChild(head);
+
       if (b.params.length) {
         const grid = document.createElement("div");
         grid.className = "param-grid";
         b.params.forEach((pr) => {
           const cell = document.createElement("div");
-          cell.className = "param" + (pr.toggle ? " toggle" : "");
-          cell.innerHTML = `<span class="pname">${pr.name}</span><span class="pval">${pr.display}</span>`;
+          cell.className = "param editable" + (pr.toggle ? " toggle" : "");
+          const value = curVal(p.slot, blkIdx, pr);
+          const out = document.createElement("span");
+          out.className = "pval";
+          out.textContent = fmtParam(pr, value);
+          const inp = document.createElement("input");
+          if (pr.toggle) {
+            inp.type = "checkbox"; inp.checked = Math.round(value) !== 0;
+            inp.addEventListener("change", () => {
+              const v = inp.checked ? 1 : 0;
+              (e.params[blkIdx] ||= {})[pr.algId] = v;
+              out.textContent = fmtParam(pr, v);
+              refreshSaveBar(p);
+            });
+          } else {
+            inp.type = "range"; inp.min = pr.min; inp.max = pr.max; inp.step = pr.step; inp.value = value;
+            inp.addEventListener("input", () => {
+              const v = Number(inp.value);
+              (e.params[blkIdx] ||= {})[pr.algId] = v;
+              out.textContent = fmtParam(pr, v);
+              refreshSaveBar(p);
+            });
+          }
+          cell.innerHTML = `<span class="pname">${pr.name}</span>`;
+          cell.appendChild(out);
+          cell.appendChild(inp);
           grid.appendChild(cell);
         });
         bd.appendChild(grid);
       }
       d.appendChild(bd);
     });
+
+    // save bar
+    const bar = document.createElement("div");
+    bar.className = "save-bar";
+    bar.dataset.slot = p.slot;
+    const dl = document.createElement("button");
+    dl.type = "button"; dl.className = "save-edit"; dl.textContent = "⬇ Download edited .prst";
+    dl.addEventListener("click", () => downloadEdit(p));
+    const rst = document.createElement("button");
+    rst.type = "button"; rst.className = "linkish"; rst.textContent = "reset";
+    rst.addEventListener("click", () => { edits.delete(p.slot); renderPresets(); });
+    const note = document.createElement("span");
+    note.className = "subtitle save-note";
+    bar.appendChild(dl); bar.appendChild(rst); bar.appendChild(note);
+    d.appendChild(bar);
     return d;
+  }
+
+  function refreshSaveBar(p) {
+    const bar = listEl.querySelector(`.save-bar[data-slot="${p.slot}"]`);
+    if (bar) bar.classList.toggle("dirty", !!isDirty(p.slot));
+  }
+
+  async function downloadEdit(p) {
+    const e = getEdit(p.slot);
+    const note = listEl.querySelector(`.save-bar[data-slot="${p.slot}"] .save-note`);
+    try {
+      const r = await fetch("/api/device/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patch_slot: p.slot, params: e.params, bypass: e.bypass, settings: e.settings }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+      const disp = r.headers.get("content-disposition") || "";
+      const m = disp.match(/filename="(.+?)"/);
+      const url = URL.createObjectURL(await r.blob());
+      const a = document.createElement("a");
+      a.href = url; a.download = m ? m[1] : "edited.prst"; a.click();
+      URL.revokeObjectURL(url);
+      if (note) note.textContent = `Saved ${a.download} — import via Suite (device is not written directly).`;
+    } catch (err) {
+      if (note) note.textContent = `Failed: ${err.message}`;
+    }
   }
 
   function renderPresets() {

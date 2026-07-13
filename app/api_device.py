@@ -96,3 +96,28 @@ def clone(req: CloneRequest) -> Response:
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="clones.zip"'},
     )
+
+
+class EditRequest(BaseModel):
+    patch_slot: int
+    params: dict[int, dict[int, float]] = {}  # {block_index: {algId: value}}
+    bypass: dict[int, bool] = {}  # {block_index: active}
+    settings: dict = {}  # {patch_vol, bpm}
+
+
+@router.post("/edit")
+def edit(req: EditRequest) -> Response:
+    """Apply parameter / bypass / patch-setting edits and return the edited .prst
+    for the user to re-import via Suite. This NEVER writes to the device."""
+    try:
+        fname, data = patchlib.apply_edits(
+            req.patch_slot,
+            {"params": req.params, "bypass": req.bypass, "settings": req.settings},
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return Response(
+        data,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )

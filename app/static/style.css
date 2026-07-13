@@ -473,7 +473,7 @@ button:disabled {
 .linkish:hover { text-decoration: underline; }
 
 /* --- Preset Explorer --- */
-.explorer-main { max-width: 960px; }
+.explorer-main { max-width: min(1500px, 96vw); }
 
 .filter-bar {
   display: flex;
@@ -538,12 +538,14 @@ button:disabled {
 .state.off { color: var(--muted); background: var(--track); }
 
 .param-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 0.25rem 0.75rem;
+  display: flex;
+  flex-wrap: nowrap;        /* every block's params on one line */
+  gap: 0.4rem;
   margin-left: 0.3rem;
 }
 .param {
+  flex: 1 1 0;
+  min-width: 0;             /* allow shrink so 8 params fit without wrapping */
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
@@ -552,9 +554,59 @@ button:disabled {
   border-radius: 4px;
   background: color-mix(in srgb, var(--muted) 7%, transparent);
 }
+.param .pname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .param .pname { color: var(--muted); }
 .param .pval { font-variant-numeric: tabular-nums; font-weight: 600; }
 .param.toggle .pval { font-weight: 500; }
+
+/* editable params: name+value row, slider/checkbox below */
+.param.editable {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.15rem;
+}
+.param.editable .pname,
+.param.editable .pval { display: inline; }
+.param.editable > .pname { float: left; }
+.param.editable > .pval { float: right; }
+.param.editable input[type="range"] {
+  clear: both;
+  width: 100%;
+  margin: 0.15rem 0 0;
+  accent-color: var(--accent);
+  height: 1rem;
+}
+.param.editable input[type="checkbox"] {
+  clear: both;
+  align-self: flex-start;
+  accent-color: var(--accent);
+  margin-top: 0.15rem;
+}
+
+.state-toggle {
+  font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 0.1em 0.5em; border-radius: 999px; cursor: pointer; border: 1px solid var(--border);
+}
+.state-toggle.on { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); border-color: var(--ok); }
+.state-toggle.off { color: var(--muted); background: var(--track); }
+
+.patch-settings { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
+.patch-set { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--muted); }
+.patch-set input[type="range"] { accent-color: var(--accent); width: 120px; }
+.patch-set b { color: var(--text); font-variant-numeric: tabular-nums; min-width: 2.5em; }
+
+.save-bar {
+  display: flex; align-items: center; gap: 0.6rem;
+  margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed var(--border);
+  opacity: 0.55;
+}
+.save-bar.dirty { opacity: 1; }
+.save-edit {
+  border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text); border-radius: 6px; padding: 0.3rem 0.7rem; font-size: 0.82rem; cursor: pointer;
+}
+.save-bar:not(.dirty) .save-edit { pointer-events: none; }
+.save-note { font-size: 0.78rem; }
 
 .chip-row { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .chip {

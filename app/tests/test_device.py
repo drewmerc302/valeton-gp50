@@ -87,6 +87,42 @@ def test_block_params_decode_against_hardware():
     assert p["settings"] == {"patch_vol": 50, "bpm": 120}
 
 
+def test_edit_endpoint_writes_params_bypass_settings():
+    from app import patchlib
+
+    r = client.post(
+        "/api/device/edit",
+        json={
+            "patch_slot": 15,
+            "params": {2: {0: 88}},  # DST block, algId 0 (Gain) -> 88
+            "bypass": {5: True},  # activate EQ block
+            "settings": {"patch_vol": 70},
+        },
+    )
+    assert r.status_code == 200
+    d = r.content
+    assert len(d) == 552
+    assert patchlib._param_floats(d)[2 * 8 + 0] == 88.0
+    assert bool(patchlib._bypass_mask(d) >> 5 & 1) is True
+    assert patchlib._patch_settings(bytes(d))["patch_vol"] == 70
+    assert d[patchlib.CRC_OFF] == patchlib._crc8(
+        d[patchlib.CRC_OFF + 1 :]
+    )  # CRC refixed
+
+
+def test_edit_leaves_other_params_untouched():
+    from app import patchlib
+
+    orig = patchlib._param_floats(open(patchlib.patch_file(15), "rb").read())
+    d = client.post(
+        "/api/device/edit", json={"patch_slot": 15, "params": {2: {0: 88}}}
+    ).content
+    now = patchlib._param_floats(d)
+    # only DST/Gain (index 16) changed
+    diffs = [i for i in range(80) if abs(orig[i] - now[i]) > 1e-6]
+    assert diffs == [2 * 8 + 0]
+
+
 def test_official_names_origin():
     from app import patchlib
 

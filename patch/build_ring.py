@@ -60,12 +60,23 @@ def params_of(entry: dict) -> list:
             algid = -1
         if algid < 0:
             continue
+
+        def _num(x, default):
+            try:
+                return float(x)
+            except (TypeError, ValueError):
+                return default
+
         out.append(
             {
                 "name": p.get("name"),
                 "algId": algid,
                 "toggle": p.get("widgetType") == 1 or (p.get("valueRange") == "Off/On"),
                 "unit": unit_from_range(p.get("valueRange") or ""),
+                # slider bounds are in display units == the stored float value
+                "min": _num(p.get("min"), 0),
+                "max": _num(p.get("max"), 100),
+                "step": _num(p.get("step"), 1),
             }
         )
     return out

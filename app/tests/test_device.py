@@ -28,9 +28,35 @@ def test_inventory_shape_real_data():
             "snaptone_name",
             "ir_name",
             "amp_name",
+            "blocks",
         } <= set(p)
     for s in body["snaptones"]:
         assert set(s.keys()) == {"slot", "name"}
+
+
+def test_block_detail_and_facets():
+    from app import patchlib
+
+    # a known amp patch has a resolved Block · Type · Model chain
+    great = next(p for p in patchlib.all_patches() if p["name"] == "GreatPedal")
+    labels = [b["label"] for b in great["blocks"] if b["active"]]
+    assert any("DST · OD ·" in x for x in labels)  # Drive · type · model granularity
+    assert any(x.startswith("AMP · ") for x in labels)
+
+    # a SnapTone patch's N->S block carries the device SnapTone name
+    vox = next(p for p in patchlib.all_patches() if p["name"] == "VoxUltNAM")
+    ns = next(b for b in vox["blocks"] if b["block"] == "N->S" and b["active"])
+    assert ns["model"] == "VX UL10 Ed"
+
+    fac = client.get("/api/device/facets").json()
+    dst = next(b for b in fac["blocks"] if b["block"] == "DST")
+    assert "OD" in dst["types"] and "Fuzz" in dst["types"]
+
+
+def test_explorer_page_served():
+    html = client.get("/explorer").text
+    assert 'id="preset-list"' in html and 'id="filter-bar"' in html
+    assert "/api/device" in client.get("/static/explorer.js").text
 
 
 def test_snaptone_patches_are_the_nam_patches():

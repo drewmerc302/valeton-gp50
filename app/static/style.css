@@ -462,3 +462,71 @@ button:disabled {
   cursor: pointer;
 }
 .linkish:hover { text-decoration: underline; }
+
+/* --- Preset Explorer --- */
+.explorer-main { max-width: 960px; }
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+.field.inline { display: flex; flex-direction: column; gap: 0.15rem; }
+.field.inline select {
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.active-filters { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.filter-pill {
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.filter-pill .x { color: var(--muted); margin-left: 0.2rem; }
+
+.preset-list { list-style: none; margin: 0; padding: 0; }
+.preset-row {
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.preset-row:last-child { border-bottom: none; }
+.preset-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; }
+.preset-num { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 0.85rem; }
+.preset-name { font-weight: 600; }
+
+.chip-row { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.chip {
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--track);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chip:hover { border-color: var(--accent); }
+/* per-block accent tint (left border), keeps the row scannable like FM3-Edit */
+.chip { border-left-width: 3px; }
+.chip.blk-nr   { border-left-color: #7a7f8a; }
+.chip.blk-pre  { border-left-color: #3fb0d8; }
+.chip.blk-dst  { border-left-color: #e0733a; }
+.chip.blk-amp  { border-left-color: #d8434a; }
+.chip.blk-cab  { border-left-color: #c9a13a; }
+.chip.blk-eq   { border-left-color: #6a9a3a; }
+.chip.blk-mod  { border-left-color: #b05ad0; }
+.chip.blk-dly  { border-left-color: #3a6df0; }
+.chip.blk-rvb  { border-left-color: #2f9e8f; }
+.chip.blk-ns   { border-left-color: #6d94ff; }

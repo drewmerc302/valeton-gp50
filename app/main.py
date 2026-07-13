@@ -36,6 +36,11 @@ def device_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "device.html")
 
 
+@router.get("/explorer", response_class=FileResponse)
+def explorer_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "explorer.html")
+
+
 app.include_router(router)
 app.include_router(api_router)
 app.include_router(device_api_router)

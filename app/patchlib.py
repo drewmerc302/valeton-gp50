@@ -33,6 +33,9 @@ BANK_MAP = os.path.join(PROJECT_ROOT, "patch", "bank_map.json")
 NS_CAT, CAB_CAT = 0x0F, 0x0A
 AMP_CATS = (0x07, 0x08)
 
+# blocks in bitmask/model-record order (bit i = block i active)
+BLOCK_NAMES = ["NR", "PRE", "DST", "AMP", "CAB", "EQ", "MOD", "DLY", "RVB", "N->S"]
+
 
 class SnapTone(TypedDict):
     slot: int
@@ -55,6 +58,7 @@ class Patch(TypedDict):
     snaptone_name: str
     ir_name: str
     amp_name: str
+    blocks: list  # per-block detail (see _blocks_for)
 
 
 @lru_cache(maxsize=1)
@@ -64,12 +68,23 @@ def _ring() -> dict:
     return {int(k): v for k, v in json.load(open(FXID_RING)).items()}
 
 
+def _model_entry(category: int, idx: int) -> Optional[dict]:
+    return _ring().get((category << 24) | idx)
+
+
 def _model_name(category: int, idx: int) -> Optional[str]:
-    fxid = (category << 24) | idx
-    e = _ring().get(fxid)
-    if e:
-        return e.get("name") or e.get("fxtitle")
-    return None
+    e = _model_entry(category, idx)
+    return (e.get("name") or e.get("fxtitle")) if e else None
+
+
+@lru_cache(maxsize=1)
+def _multi_type_blocks() -> frozenset:
+    """blocks whose model catalog spans >1 type (so the type adds info, e.g.
+    DST -> OD/Fuzz/Distortion). RVB/DLY/EQ/NR have one type -> omit it."""
+    by_block: dict[str, set] = {}
+    for e in _ring().values():
+        by_block.setdefault(e.get("module"), set()).add(e.get("type"))
+    return frozenset(b for b, ts in by_block.items() if len(ts) > 1)
 
 
 def _model_block(b: bytes):
@@ -78,6 +93,45 @@ def _model_block(b: bytes):
         return []
     val = b[i + 4 : i + 4 + 40]
     return [(val[k * 4], val[k * 4 + 3]) for k in range(10)]
+
+
+def _bypass_mask(b: bytes) -> int:
+    """u32 bitmask (record id=1 grp=0x30): bit k = block k active (BLOCK_NAMES order)."""
+    i = b.find(bytes([0x01, 0x30, 0x04, 0x00]))
+    return struct.unpack_from("<I", b, i + 4)[0] if i >= 0 else 0
+
+
+def _blocks_for(b: bytes, ns_label: dict) -> list[dict]:
+    """Per-block detail: name, active flag, model type + model, and a display
+    label 'BLOCK · Type · Model' (type omitted for single-type blocks)."""
+    mask = _bypass_mask(b)
+    recs = _model_block(b)
+    out = []
+    for k, block in enumerate(BLOCK_NAMES):
+        idx, cat = recs[k] if k < len(recs) else (0, 0)
+        if block == "N->S":
+            model = ns_label.get(idx) if idx else None
+            btype = "SnapTone"
+        else:
+            e = _model_entry(cat, idx)
+            model = (e.get("name") or e.get("fxtitle")) if e else None
+            btype = e.get("type") if e else None
+        parts = [block]
+        if btype and block in _multi_type_blocks():
+            parts.append(btype)
+        if model:
+            parts.append(model)
+        out.append(
+            {
+                "block": block,
+                "active": bool(mask >> k & 1),
+                "type": btype,
+                "model": model,
+                "index": idx,
+                "label": " · ".join(parts),
+            }
+        )
+    return out
 
 
 def _patch_name(b: bytes, path: str) -> str:
@@ -102,10 +156,10 @@ def _bank_labels() -> dict:
 @lru_cache(maxsize=1)
 def _load() -> tuple:
     patches: list[Patch] = []
+    raw: dict[int, bytes] = {}
     for path in sorted(glob.glob(os.path.join(EXPORT_DIR, "*.prst"))):
         b = open(path, "rb").read()
         recs = _model_block(b)
-        by_cat = {cat: idx for idx, cat in recs}
         ns = next((idx for idx, cat in recs if cat == NS_CAT), 0)
         cab = next((idx for idx, cat in recs if cat == CAB_CAT), 0)
         amp = next((idx for idx, cat in recs if cat in AMP_CATS), 0)
@@ -122,8 +176,10 @@ def _load() -> tuple:
                 snaptone_name="",  # filled below
                 ir_name=_model_name(CAB_CAT, cab) or f"Cab #{cab}",
                 amp_name=_model_name(amp_cat, amp) or f"Amp #{amp}",
+                blocks=[],  # filled below (needs the SnapTone slot->name map)
             )
         )
+        raw[patches[-1]["slot"]] = b
 
     # SnapTone identity: union of (slots referenced by patches) and (all populated
     # device slots from bank_map.json). Device names are authoritative; slots that
@@ -142,6 +198,7 @@ def _load() -> tuple:
         p["snaptone_name"] = (
             slot_label.get(p["snaptone_slot"], "") if p["snaptone_slot"] else ""
         )
+        p["blocks"] = _blocks_for(raw[p["slot"]], slot_label)
 
     # IR/Cab inventory: every distinct CAB model referenced by a patch.
     irs: list[Ir] = []
@@ -153,6 +210,32 @@ def _load() -> tuple:
 
 def all_patches() -> list[Patch]:
     return list(_load()[0])
+
+
+def facets() -> dict:
+    """Distinct active-block dimensions for the explorer's filters:
+    which blocks are used, and per block the set of types and models seen."""
+    blocks: dict[str, dict] = {}
+    for p in all_patches():
+        for blk in p["blocks"]:
+            if not blk["active"]:
+                continue
+            d = blocks.setdefault(blk["block"], {"types": set(), "models": set()})
+            if blk["type"]:
+                d["types"].add(blk["type"])
+            if blk["model"]:
+                d["models"].add(blk["model"])
+    order = {b: i for i, b in enumerate(BLOCK_NAMES)}
+    return {
+        "blocks": [
+            {
+                "block": b,
+                "types": sorted(blocks[b]["types"]),
+                "models": sorted(blocks[b]["models"]),
+            }
+            for b in sorted(blocks, key=lambda x: order.get(x, 99))
+        ]
+    }
 
 
 def all_snaptones() -> list[SnapTone]:

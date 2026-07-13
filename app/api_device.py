@@ -30,6 +30,12 @@ def inventory() -> dict:
     }
 
 
+@router.get("/facets")
+def facets() -> dict:
+    """Active-block filter dimensions for the preset explorer (blocks, types, models)."""
+    return patchlib.facets()
+
+
 @router.get("/usage/snaptone/{slot}")
 def usage_snaptone(slot: int) -> dict:
     st = patchlib.find_snaptone(slot)

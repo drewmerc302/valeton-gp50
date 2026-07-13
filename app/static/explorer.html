@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GP-50 Preset Explorer</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <nav class="top-nav">
+      <a href="/">Convert</a>
+      <a href="/device">Device Inspector</a>
+      <a href="/explorer" class="active">Preset Explorer</a>
+    </nav>
+    <h1>Preset Explorer</h1>
+    <p class="subtitle">Every preset's active chain at <code>Block · Type · Model</code> granularity &mdash; filter by block, drive type, reverb model, anything</p>
+  </header>
+
+  <div id="source-note" class="source-note" role="status">parsed from exported patches</div>
+
+  <main class="explorer-main">
+    <section class="card filter-card">
+      <div class="lib-head">
+        <input type="search" id="preset-search" placeholder="Search presets, models, types&hellip;" class="lib-search" />
+        <span id="result-count" class="subtitle"></span>
+      </div>
+      <div id="filter-bar" class="filter-bar"></div>
+      <div id="active-filters" class="active-filters"></div>
+    </section>
+
+    <section class="card">
+      <ul id="preset-list" class="preset-list"></ul>
+      <p id="preset-empty" class="subtitle" hidden>No presets match these filters.</p>
+    </section>
+  </main>
+
+  <script src="/static/explorer.js"></script>
+</body>
+</html>

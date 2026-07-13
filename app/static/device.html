@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GP-50 Device Inspector</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <nav class="top-nav">
+      <a href="/">Convert</a>
+      <a href="/device" class="active">Device Inspector</a>
+    </nav>
+    <h1>Device Usage Inspector</h1>
+    <p class="subtitle">See which patches reference a SnapTone capture or IR/cab</p>
+  </header>
+
+  <div id="mock-banner" class="mock-banner" role="status">
+    MOCK DATA &mdash; not a live device read
+  </div>
+
+  <main>
+    <section class="card">
+      <h2>1. Pick a SnapTone or IR</h2>
+      <div class="config-grid">
+        <div class="field">
+          <label>Type</label>
+          <div class="format-toggle" id="kind-toggle">
+            <label class="radio-pill">
+              <input type="radio" name="kind" id="kind-snaptone" value="snaptone" checked />
+              SnapTone
+            </label>
+            <label class="radio-pill">
+              <input type="radio" name="kind" id="kind-ir" value="ir" />
+              IR / Cab
+            </label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="item-select">Slot</label>
+          <select id="item-select"></select>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="usage-section">
+      <h2>2. Patches using this</h2>
+      <ul id="usage-list" class="file-list"></ul>
+      <p id="usage-empty" class="subtitle" hidden>No patches reference this slot.</p>
+    </section>
+  </main>
+
+  <script src="/static/device.js"></script>
+</body>
+</html>

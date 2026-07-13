@@ -44,6 +44,40 @@ header {
   margin: 0 auto;
 }
 
+.top-nav {
+  display: flex;
+  gap: 1.25rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.top-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.top-nav a:hover {
+  color: var(--text);
+}
+
+.top-nav a.active {
+  color: var(--accent);
+}
+
+.mock-banner {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0.6rem 1.5rem;
+  color: var(--fail);
+  background: color-mix(in srgb, var(--fail) 12%, transparent);
+  border-top: 1px solid var(--fail);
+  border-bottom: 1px solid var(--fail);
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
 header h1 {
   margin: 0 0 0.25rem;
   font-size: 1.5rem;

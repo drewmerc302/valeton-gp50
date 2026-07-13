@@ -1,16 +1,16 @@
 # STATUS — GP-50 Converter MVP
-updated: 2026-07-13 tick-4 | branch: mvp-converter | phase: 4 | acceptance: 0/7 (UI drive pending T5)
+updated: 2026-07-13 tick-5 | branch: mvp-converter | phase: 5 | acceptance: 1/7
 
 ## Now / next
-- T3 DONE: app/static/{index.html,app.js,style.css} + main.py serves / and mounts /static. Drag-drop+picker (.nam filter+dedup), format toggle (0.7.0 disabled), epochs+Fast preset, live progress poll, download links, error handling. Offline-safe (no CDNs). Reviewed: correct API calls + polling + terminal detection. Evidence: 22 tests pass (4 new). Committed.
-- Next: T4 device-stub screen (mocked SnapTone/IR→patch usage inspector + MOCK banner).
+- T4 DONE: device usage-inspector at /device — app/device_stub.py (mock inventory + patches_using_snaptone/ir, mock→real seam w/ TODO), app/api_device.py (/api/device/inventory + /usage), device.html/js w/ prominent MOCK banner + nav. Reviewed: no device I/O, banner present, 404-vs-empty handled. Evidence: 31 tests pass (9 new). Committed. → Acceptance #4 MET.
+- Next: T1b 0.7.0 export path (train/export in .venv 0.13.0 w/ new-schema WaveNet config). Trickiest task; exact config handed to the agent.
 
 ## Backlog (DAG)
 - [x] T0  scaffold FastAPI app, .venv-app, pytest harness, run.sh        [done]  (2 passed)
 - [x] T1  engine API: app/engine.py wrap 2-venv convert, progress_cb, 0.5.x path   [done]  (10 passed)
 - [x] T2  backend: POST create-job + background exec + GET status/download/list   (deps: T1)  [done]  (18 passed)
 - [x] T3  frontend: drag-drop, format toggle, epochs, live progress, download   (deps: T2)  [done]  (22 passed)
-- [ ] T4  device-stub screen: mocked SnapTone/IR→patch usage inspector + MOCK banner   (deps: T0)  [todo]
+- [x] T4  device-stub screen: mocked SnapTone/IR→patch usage inspector + MOCK banner   (deps: T0)  [done]  (31 passed, #4 MET)
 - [ ] T5  robustness + tests: failure isolation (have it), error surfacing in UI, unit + HEADLESS e2e (real fast-preset convert via API) + UI screenshot   (deps: T2,T3)  [todo]
 - [ ] T6  acceptance sweep + run.sh + README; verify all 7 criteria   (deps: T3,T4,T5)  [todo]
 - [ ] T1b 0.7.0 export path (train/export in .venv 0.13.0 with new-schema WaveNet config)   (deps: T1)  [todo]
@@ -19,7 +19,7 @@ updated: 2026-07-13 tick-4 | branch: mvp-converter | phase: 4 | acceptance: 0/7 
 1. [ ] UI: A2.nam → valid 0.5.x A1, format OK, progress shown
 2. [ ] batch ≥2 + bad-file isolation   (engine supports; needs UI/e2e)
 3. [ ] both output formats load-valid   (needs T1b)
-4. [ ] usage-inspector stub w/ MOCK banner
+4. [x] usage-inspector stub w/ MOCK banner  (T4: /device, 31 tests)
 5. [ ] test suite green + headless e2e + UI screenshot
 6. [ ] ESR under threshold (fast <0.05, full <0.015)
 7. [ ] run.sh launches; README documents

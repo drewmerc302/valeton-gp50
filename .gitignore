@@ -15,6 +15,7 @@ __pycache__/
 *.pyc
 *.jsonl
 *.log
+block_library.json
 
 # large binary DI (download separately; see a2a1/README.md)
 refs/*.wav

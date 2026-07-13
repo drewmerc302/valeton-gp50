@@ -15,9 +15,15 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from app import device_io, patchlib
+from app import blocklib, device_io, patchlib
 
 router = APIRouter(prefix="/api/device")
+
+
+@router.get("/models/{block}")
+def models(block: str) -> dict:
+    """Selectable models for a block type (for the model picker), with param defs."""
+    return {"block": block, "models": patchlib.models_for_block(block)}
 
 
 @router.post("/sync")
@@ -104,6 +110,35 @@ class EditRequest(BaseModel):
     bypass: dict[int, bool] = {}  # {block_index: active}
     settings: dict = {}  # {patch_vol, bpm}
     footswitches: dict[str, list[int]] = {}  # {"fs1": [block_idx], "fs2": [...]}
+    models: dict[int, int] = {}  # {block_index: fxid} — swap a block's model
+
+
+class BlockLibEntry(BaseModel):
+    name: str
+    block: str
+    fxid: int
+    model_name: str = ""
+    params: dict[int, float] = {}
+
+
+@router.get("/blocklib")
+def blocklib_list(block: str | None = None) -> dict:
+    return {"entries": blocklib.list_entries(block)}
+
+
+@router.post("/blocklib")
+def blocklib_add(entry: BlockLibEntry) -> dict:
+    try:
+        return blocklib.add_entry(
+            entry.name, entry.block, entry.fxid, entry.model_name, entry.params
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.delete("/blocklib/{entry_id}")
+def blocklib_delete(entry_id: str) -> dict:
+    return {"deleted": blocklib.delete_entry(entry_id)}
 
 
 @router.post("/edit")
@@ -118,6 +153,7 @@ def edit(req: EditRequest) -> Response:
                 "bypass": req.bypass,
                 "settings": req.settings,
                 "footswitches": req.footswitches,
+                "models": req.models,
             },
         )
     except ValueError as e:

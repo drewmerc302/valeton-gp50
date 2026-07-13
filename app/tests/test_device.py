@@ -140,6 +140,81 @@ def test_edit_leaves_other_params_untouched():
     assert diffs == [2 * 8 + 0]
 
 
+def test_block_detail_carries_fxid_roundtrips_to_catalog():
+    from app import patchlib
+
+    great = next(p for p in patchlib.all_patches() if p["name"] == "GreatPedal")
+    dst = next(b for b in great["blocks"] if b["block"] == "DST" and b["active"])
+    assert dst["fxid"]  # non-zero for a populated block
+    # the block's fxid must exist in the selectable-model catalog for its type
+    models = patchlib.models_for_block("DST")
+    match = next((m for m in models if m["fxid"] == dst["fxid"]), None)
+    assert match is not None
+    assert match["name"] == dst["model"]
+
+
+def test_models_for_block_carry_labels():
+    from app import patchlib
+
+    models = patchlib.models_for_block("DST")
+    m = models[0]
+    assert {"fxid", "name", "label", "label_official", "params"} <= set(m)
+    assert m["label"].startswith("DST · ")
+    ns = patchlib.models_for_block("N->S")
+    assert ns and all(x["label"].startswith("N->S · ") for x in ns)
+
+
+def test_edit_swaps_model_record():
+    from app import patchlib
+
+    # pick a DST model different from what patch 15 currently has
+    orig = open(patchlib.patch_file(15), "rb").read()
+    cur = patchlib._blocks_for(orig, {})[2]["fxid"]
+    target = next(m for m in patchlib.models_for_block("DST") if m["fxid"] != cur)
+    r = client.post(
+        "/api/device/edit",
+        json={"patch_slot": 15, "models": {2: target["fxid"]}},
+    )
+    assert r.status_code == 200
+    d = r.content
+    assert len(d) == 552
+    assert patchlib._blocks_for(bytes(d), {})[2]["fxid"] == target["fxid"]
+    assert d[patchlib.CRC_OFF] == patchlib._crc8(d[patchlib.CRC_OFF + 1 :])
+
+
+def test_blocklib_crud_roundtrip():
+    from app import blocklib
+
+    before = len(blocklib.list_entries("DST"))
+    entry = client.post(
+        "/api/device/blocklib",
+        json={
+            "name": "Test TS808 Boost",
+            "block": "DST",
+            "fxid": patchlib_fxid_for_dst(),
+            "model_name": "Green OD",
+            "params": {0: 42, 1: 55},
+        },
+    ).json()
+    assert entry["id"] and entry["name"] == "Test TS808 Boost"
+    listed = client.get("/api/device/blocklib?block=DST").json()["entries"]
+    assert len(listed) == before + 1
+    assert any(e["id"] == entry["id"] for e in listed)
+    # stored params keyed by str(algId)
+    saved = next(e for e in listed if e["id"] == entry["id"])
+    assert saved["params"]["0"] == 42.0
+    assert (
+        client.delete(f"/api/device/blocklib/{entry['id']}").json()["deleted"] is True
+    )
+    assert len(client.get("/api/device/blocklib?block=DST").json()["entries"]) == before
+
+
+def patchlib_fxid_for_dst():
+    from app import patchlib
+
+    return patchlib.models_for_block("DST")[0]["fxid"]
+
+
 def test_official_names_origin():
     from app import patchlib
 

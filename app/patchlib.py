@@ -203,6 +203,16 @@ def _params_for(entry: Optional[dict], floats: list, block_index: int) -> list:
     return out
 
 
+def _block_label(block: str, btype: Optional[str], name: Optional[str]) -> str:
+    """'BLOCK · Type · Model' — type omitted for single-type blocks or when absent."""
+    parts = [block]
+    if btype and block in _multi_type_blocks():
+        parts.append(btype)
+    if name:
+        parts.append(name)
+    return " · ".join(parts)
+
+
 def _blocks_for(b: bytes, ns_label: dict) -> list[dict]:
     """Per-block detail: name, active flag, model type + model, and a display
     label 'BLOCK · Type · Model' (type omitted for single-type blocks)."""
@@ -217,6 +227,7 @@ def _blocks_for(b: bytes, ns_label: dict) -> list[dict]:
             e = _model_entry(NS_CAT, idx)  # N->S param defs (Gain/VOL/Bass/Mid/Treble)
             model = ns_label.get(idx) if idx else None
             btype = "SnapTone"
+            fxid = (NS_CAT << 24) | idx if idx else 0
         else:
             e = _model_entry(cat, fxlow)
             model = (e.get("name") or e.get("fxtitle")) if e else None
@@ -224,14 +235,7 @@ def _blocks_for(b: bytes, ns_label: dict) -> list[dict]:
             official = (e.get("origin") or None) if e else None
             if block == "CAB":
                 model = _cab_name(fxlow) or model  # prefer real User IR device name
-
-        def _label(name):
-            parts = [block]
-            if btype and block in _multi_type_blocks():
-                parts.append(btype)
-            if name:
-                parts.append(name)
-            return " · ".join(parts)
+            fxid = (cat << 24) | fxlow if fxlow or cat else 0
 
         out.append(
             {
@@ -241,9 +245,10 @@ def _blocks_for(b: bytes, ns_label: dict) -> list[dict]:
                 "model": model,
                 "official": official,  # official gear reference (Green OD -> Ibanez TS808)
                 "index": idx,
-                "label": _label(model),
-                "label_official": _label(
-                    official or model
+                "fxid": fxid,  # (cat<<24)|fxlow — current model id (for library/model-swap)
+                "label": _block_label(block, btype, model),
+                "label_official": _block_label(
+                    block, btype, official or model
                 ),  # falls back to device name
                 "params": _params_for(e, floats, k),
             }
@@ -407,6 +412,52 @@ def facets() -> dict:
     }
 
 
+def models_for_block(block: str) -> list[dict]:
+    """All selectable models for a block type, for the model picker. Each carries
+    its param definitions (name/algId/default/min/max/step/toggle) so the UI can
+    apply defaults on selection. N->S lists the device's loaded SnapTones."""
+    if block == "N->S":
+        ns_params = (_model_entry(NS_CAT, 0) or {}).get("params", [])
+        out = []
+        for s in all_snaptones():
+            out.append(
+                {
+                    "fxid": (NS_CAT << 24) | s["slot"],
+                    "name": s["name"],
+                    "official": None,
+                    "type": "SnapTone",
+                    "label": _block_label(block, "SnapTone", s["name"]),
+                    "label_official": _block_label(block, "SnapTone", s["name"]),
+                    "params": ns_params,
+                }
+            )
+        return out
+    out = []
+    for fxid, e in _ring().items():
+        if e.get("module") != block:
+            continue
+        fxlow = fxid & 0xFFFFFF
+        name = (
+            _cab_name(fxlow) if block == "CAB" else (e.get("name") or e.get("fxtitle"))
+        )
+        official = e.get("origin") or None
+        btype = e.get("type") or ""
+        nm = name or f"#{fxlow}"
+        out.append(
+            {
+                "fxid": fxid,
+                "name": nm,
+                "official": official,
+                "type": btype,
+                "label": _block_label(block, btype, nm),
+                "label_official": _block_label(block, btype, official or nm),
+                "params": e.get("params", []),
+            }
+        )
+    out.sort(key=lambda m: (m["fxid"] & 0x100000, m["name"]))  # factory before user IR
+    return out
+
+
 def all_snaptones() -> list[SnapTone]:
     return list(_load()[1])
 
@@ -496,6 +547,19 @@ def apply_edits(patch_slot: int, edits: dict) -> tuple[str, bytes]:
     if src is None:
         raise ValueError(f"unknown patch slot {patch_slot}")
     b = bytearray(open(src, "rb").read())
+
+    # 0. block MODEL changes (record 03 30): each block k's model = 4 bytes
+    #    [fxlow b0][b1][b2][category]. fxid = (category<<24)|fxlow.
+    mb = b.find(bytes([0x03, 0x30, 0x28, 0x00]))
+    for blk, fxid in (edits.get("models") or {}).items():
+        if mb < 0:
+            break
+        rec = mb + 4 + int(blk) * 4
+        fxid = int(fxid)
+        b[rec] = fxid & 0xFF
+        b[rec + 1] = (fxid >> 8) & 0xFF
+        b[rec + 2] = (fxid >> 16) & 0xFF
+        b[rec + 3] = (fxid >> 24) & 0xFF
 
     # 1. parameter floats (record 04 30, 10 blocks x 8 slots)
     fi = b.find(bytes([0x04, 0x30, 0x40, 0x01]))

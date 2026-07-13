@@ -171,20 +171,46 @@
   }
 
   const expanded = new Set(); // preset slots currently expanded
-  const edits = new Map(); // slot -> {params:{blk:{alg:val}}, bypass:{blk:bool}, settings:{}}
+  const edits = new Map(); // slot -> {params:{blk:{alg:val}}, bypass:{blk:bool}, settings:{}, models:{blk:fxid}, override:{blk:{...}}}
+  let allModels = {}; // block -> [selectable models w/ param defs] (for the model picker)
+  let libEntries = []; // all block-library entries (grouped client-side by block)
+  let pickerKey = null; // `${slot}:${blkIdx}` of the open model picker, or null
 
   function blockLabel(b) {
     return officialOn() && b.official ? b.label_official : b.label;
   }
 
   function getEdit(slot) {
-    if (!edits.has(slot)) edits.set(slot, { params: {}, bypass: {}, settings: {}, footswitches: null });
+    if (!edits.has(slot))
+      edits.set(slot, { params: {}, bypass: {}, settings: {}, footswitches: null, models: {}, override: {} });
     return edits.get(slot);
   }
   function isDirty(slot) {
     const e = edits.get(slot);
     return e && (Object.keys(e.params).length || Object.keys(e.bypass).length ||
-      Object.keys(e.settings).length || e.footswitches);
+      Object.keys(e.settings).length || Object.keys(e.models).length || e.footswitches);
+  }
+
+  // Effective block view: if the user swapped the model, render the NEW model's
+  // label + param defs (values = saved/default) instead of the on-device block.
+  function effBlock(slot, blkIdx, b) {
+    const e = edits.get(slot);
+    const ov = e && e.override && e.override[blkIdx];
+    if (!ov) return b;
+    const pvals = (e.params && e.params[blkIdx]) || {};
+    const params = (ov.params || []).map((pd) => {
+      const value = pvals[pd.algId] !== undefined ? pvals[pd.algId] : pd.default;
+      return {
+        name: pd.name, algId: pd.algId, toggle: !!pd.toggle, unit: pd.unit || "",
+        min: pd.min, max: pd.max, step: pd.step, value,
+        display: fmtParam({ toggle: !!pd.toggle, unit: pd.unit || "" }, value),
+      };
+    });
+    return {
+      block: b.block, active: b.active, type: ov.type, model: ov.name,
+      official: ov.official, fxid: ov.fxid, label: ov.label,
+      label_official: ov.label_official, params, _override: true,
+    };
   }
   // current footswitch assignment {fs1:[...], fs2:[...]} (pending edit wins)
   function curFS(p) {
@@ -212,6 +238,170 @@
     if (pr.toggle) return Math.round(value) ? "On" : "Off";
     const v = Math.abs(value - Math.round(value)) < 1e-4 ? String(Math.round(value)) : value.toFixed(2);
     return pr.unit ? `${v} ${pr.unit}` : v;
+  }
+
+  // --- model swap + block library ------------------------------------------
+  // Set a block's (model, params): the shared core of "change model" and
+  // "apply library block". savedParams (algId->value) win over model defaults.
+  function applyModel(p, blkIdx, model, savedParams) {
+    const e = getEdit(p.slot);
+    e.models[blkIdx] = model.fxid;
+    e.override[blkIdx] = {
+      fxid: model.fxid, name: model.name, official: model.official || null,
+      type: model.type || "", label: model.label, label_official: model.label_official,
+      params: model.params || [],
+    };
+    const pv = {};
+    (model.params || []).forEach((pd) => {
+      const sv = savedParams && savedParams[pd.algId];
+      pv[pd.algId] = sv !== undefined ? Number(sv) : pd.default;
+    });
+    e.params[blkIdx] = pv;
+    pickerKey = null;
+    renderPresets();
+  }
+
+  function applyLibEntry(p, blkIdx, entry) {
+    const model = (allModels[entry.block] || []).find((m) => m.fxid === entry.fxid);
+    if (!model) { alert(`Model for "${entry.name}" is no longer available on this device.`); return; }
+    applyModel(p, blkIdx, model, entry.params);
+  }
+
+  function revertModel(p, blkIdx) {
+    const e = getEdit(p.slot);
+    delete e.models[blkIdx];
+    delete e.override[blkIdx];
+    delete e.params[blkIdx]; // drop the seeded defaults so the on-device values show
+    pickerKey = null;
+    renderPresets();
+  }
+
+  async function saveToLib(p, blkIdx, b) {
+    const name = prompt(`Save this ${blockDisplay(b.block)} block to your library as:`, b.model || b.block);
+    if (!name) return;
+    const params = {};
+    (b.params || []).forEach((pr) => { params[pr.algId] = curVal(p.slot, blkIdx, pr); });
+    try {
+      const r = await fetch("/api/device/blocklib", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, block: b.block, fxid: b.fxid, model_name: b.model || "", params }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+      await refreshLib();
+      renderPresets();
+    } catch (err) { alert(`Save failed: ${err.message}`); }
+  }
+
+  async function deleteLibEntry(id) {
+    try {
+      await fetch(`/api/device/blocklib/${id}`, { method: "DELETE" });
+      await refreshLib();
+      renderPresets();
+    } catch { /* ignore */ }
+  }
+
+  async function refreshLib() {
+    libEntries = await fetch("/api/device/blocklib").then((r) => r.json()).then((j) => j.entries || []);
+  }
+
+  // Preload the model catalog per block type + the block library so the picker
+  // renders synchronously. Model lists are static; the library refreshes on edit.
+  async function loadModelsAndLib() {
+    const blocks = [...new Set(patches.flatMap((p) => p.blocks.map((b) => b.block)))];
+    const pairs = await Promise.all(
+      blocks.map(async (blk) => {
+        try {
+          const j = await fetch(`/api/device/models/${encodeURIComponent(blk)}`).then((r) => r.json());
+          return [blk, j.models || []];
+        } catch { return [blk, []]; }
+      })
+    );
+    allModels = Object.fromEntries(pairs);
+    await refreshLib();
+  }
+
+  // The model/library picker panel shown under a block header when clicked.
+  function buildPicker(p, blkIdx, b) {
+    const panel = document.createElement("div");
+    panel.className = "model-picker";
+
+    const models = allModels[b.block] || [];
+    const lib = libEntries.filter((en) => en.block === b.block);
+
+    const search = document.createElement("input");
+    search.type = "search";
+    search.className = "picker-search";
+    search.placeholder = `Filter ${models.length} ${blockDisplay(b.block)} models…`;
+    panel.appendChild(search);
+
+    // library section (if any saved for this block type)
+    if (lib.length) {
+      const lh = document.createElement("div");
+      lh.className = "picker-section-head";
+      lh.textContent = "Your library";
+      panel.appendChild(lh);
+      const llist = document.createElement("div");
+      llist.className = "picker-list lib";
+      lib.forEach((en) => {
+        const row = document.createElement("div");
+        row.className = "picker-item lib";
+        const pick = document.createElement("button");
+        pick.type = "button"; pick.className = "picker-pick";
+        pick.innerHTML = `<b>${en.name}</b> <span class="subtitle">${en.model_name || ""}</span>`;
+        pick.addEventListener("click", () => applyLibEntry(p, blkIdx, en));
+        const del = document.createElement("button");
+        del.type = "button"; del.className = "picker-del"; del.textContent = "✕";
+        del.title = "Delete library entry";
+        del.addEventListener("click", (ev) => { ev.stopPropagation(); deleteLibEntry(en.id); });
+        row.appendChild(pick); row.appendChild(del);
+        llist.appendChild(row);
+      });
+      panel.appendChild(llist);
+    }
+
+    const mh = document.createElement("div");
+    mh.className = "picker-section-head";
+    mh.textContent = "Models";
+    panel.appendChild(mh);
+    const mlist = document.createElement("div");
+    mlist.className = "picker-list";
+    panel.appendChild(mlist);
+
+    function renderModels(q) {
+      mlist.innerHTML = "";
+      const ql = q.trim().toLowerCase();
+      models
+        .filter((m) => !ql || `${m.name} ${m.official || ""} ${m.type || ""}`.toLowerCase().includes(ql))
+        .forEach((m) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "picker-pick model" + (m.fxid === b.fxid ? " current" : "");
+          btn.innerHTML =
+            `<span>${m.name}</span>` +
+            (m.type ? ` <span class="picker-type">${m.type}</span>` : "") +
+            (m.official ? ` <span class="subtitle">${m.official}</span>` : "");
+          btn.addEventListener("click", () => applyModel(p, blkIdx, m, null));
+          mlist.appendChild(btn);
+        });
+    }
+    renderModels("");
+    search.addEventListener("input", () => renderModels(search.value));
+
+    // footer: save current to library + (if overridden) revert
+    const foot = document.createElement("div");
+    foot.className = "picker-foot";
+    const save = document.createElement("button");
+    save.type = "button"; save.className = "picker-save"; save.textContent = "★ Save current to library";
+    save.addEventListener("click", () => saveToLib(p, blkIdx, b));
+    foot.appendChild(save);
+    if (getEdit(p.slot).override[blkIdx]) {
+      const rev = document.createElement("button");
+      rev.type = "button"; rev.className = "linkish"; rev.textContent = "revert model";
+      rev.addEventListener("click", () => revertModel(p, blkIdx));
+      foot.appendChild(rev);
+    }
+    panel.appendChild(foot);
+    return panel;
   }
 
   function renderDetail(p) {
@@ -246,8 +436,9 @@
     }
 
     // per-block: bypass toggle + editable params
-    p.blocks.forEach((b, blkIdx) => {
-      if (!b.model && !b.params.length) return;
+    p.blocks.forEach((b0, blkIdx) => {
+      const b = effBlock(p.slot, blkIdx, b0);
+      if (!b.model && !b.params.length && !b0.model) return;
       const bd = document.createElement("div");
       bd.className = "block-detail";
       const active = e.bypass[blkIdx] !== undefined ? e.bypass[blkIdx] : b.active;
@@ -255,7 +446,20 @@
 
       const head = document.createElement("div");
       head.className = "block-detail-head";
-      head.innerHTML = `<span class="chip blk-${b.block.replace(/[^a-z]/gi, "").toLowerCase()}">${blockLabel(b)}</span>`;
+      // clickable model chip -> opens the model/library picker
+      const pkey = `${p.slot}:${blkIdx}`;
+      const chipBtn = document.createElement("button");
+      chipBtn.type = "button";
+      chipBtn.className =
+        `chip blk-${b.block.replace(/[^a-z]/gi, "").toLowerCase()} model-chip` +
+        (e.override[blkIdx] ? " changed" : "") + (pickerKey === pkey ? " open" : "");
+      chipBtn.innerHTML = `${blockLabel(b)} <span class="chip-caret">▾</span>`;
+      chipBtn.title = "Change model / apply a library block";
+      chipBtn.addEventListener("click", () => {
+        pickerKey = pickerKey === pkey ? null : pkey;
+        renderPresets();
+      });
+      head.appendChild(chipBtn);
       const sw = document.createElement("button");
       sw.type = "button";
       sw.className = "state-toggle " + (active ? "on" : "off");
@@ -285,6 +489,8 @@
         head.appendChild(fb);
       });
       bd.appendChild(head);
+
+      if (pickerKey === `${p.slot}:${blkIdx}`) bd.appendChild(buildPicker(p, blkIdx, b));
 
       if (b.params.length) {
         const grid = document.createElement("div");
@@ -355,7 +561,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patch_slot: p.slot, params: e.params, bypass: e.bypass,
-          settings: e.settings, footswitches: e.footswitches || {},
+          settings: e.settings, footswitches: e.footswitches || {}, models: e.models || {},
         }),
       });
       if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
@@ -471,6 +677,7 @@
       $("source-note").textContent = `Could not load presets: ${e.message}`;
       return;
     }
+    await loadModelsAndLib();
     buildFilterBar();
     renderSaved();
     render();

@@ -663,6 +663,71 @@ button:disabled {
 }
 .chip.official { border-style: dashed; font-style: italic; }
 
+/* clickable model chip in a block header + the model/library picker panel */
+.chip.model-chip { display: inline-flex; align-items: center; gap: 0.3rem; }
+.chip.model-chip .chip-caret { font-size: 0.6rem; opacity: 0.6; }
+.chip.model-chip.open { border-color: var(--accent); }
+.chip.model-chip.changed {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--track));
+}
+
+.model-picker {
+  margin: 0.15rem 0 0.3rem 0.3rem;
+  padding: 0.5rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--card-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 520px;
+}
+.picker-search {
+  width: 100%;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+}
+.picker-section-head {
+  font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted); margin-top: 0.15rem;
+}
+.picker-list {
+  display: flex; flex-direction: column; gap: 0.15rem;
+  max-height: 220px; overflow-y: auto;
+}
+.picker-list.lib { max-height: 130px; }
+.picker-item { display: flex; align-items: stretch; gap: 0.25rem; }
+.picker-pick {
+  flex: 1 1 auto; text-align: left; font: inherit; font-size: 0.82rem;
+  padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer;
+  border: 1px solid transparent; background: transparent; color: var(--text);
+  display: flex; align-items: baseline; gap: 0.4rem; min-width: 0;
+}
+.picker-pick:hover { background: var(--track); border-color: var(--border); }
+.picker-pick.current { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.picker-pick .subtitle { font-size: 0.72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-type {
+  font-size: 0.65rem; padding: 0.05em 0.35em; border-radius: 999px;
+  background: var(--track); color: var(--muted); flex: none;
+}
+.picker-del {
+  flex: none; width: 1.6rem; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--track); color: var(--muted); cursor: pointer; font-size: 0.75rem;
+}
+.picker-del:hover { color: var(--accent-text); background: #d8434a; border-color: #d8434a; }
+.picker-foot { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.2rem; padding-top: 0.35rem; border-top: 1px dashed var(--border); }
+.picker-save {
+  font: inherit; font-size: 0.78rem; padding: 0.25rem 0.6rem; border-radius: 5px; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--accent-text);
+}
+.picker-save:hover { filter: brightness(1.05); }
+
 .saved-filters { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .saved-pill {
   display: inline-flex;

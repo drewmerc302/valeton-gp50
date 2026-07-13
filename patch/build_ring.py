@@ -77,6 +77,7 @@ def params_of(entry: dict) -> list:
                 "min": _num(p.get("min"), 0),
                 "max": _num(p.get("max"), 100),
                 "step": _num(p.get("step"), 1),
+                "default": _num(p.get("defaultValue"), 0),  # applied on model change
             }
         )
     return out

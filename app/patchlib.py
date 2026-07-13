@@ -43,8 +43,11 @@ class SnapTone(TypedDict):
 
 
 class Ir(TypedDict):
-    slot: int
+    slot: int  # CAB model index (fxid low bytes); user IRs use the 0x10xxxx range
     name: str
+    type: str
+    is_user_ir: bool
+    used: int  # how many patches reference it
 
 
 class Patch(TypedDict):
@@ -68,12 +71,12 @@ def _ring() -> dict:
     return {int(k): v for k, v in json.load(open(FXID_RING)).items()}
 
 
-def _model_entry(category: int, idx: int) -> Optional[dict]:
-    return _ring().get((category << 24) | idx)
+def _model_entry(category: int, fxlow: int) -> Optional[dict]:
+    return _ring().get((category << 24) | fxlow)
 
 
-def _model_name(category: int, idx: int) -> Optional[str]:
-    e = _model_entry(category, idx)
+def _model_name(category: int, fxlow: int) -> Optional[str]:
+    e = _model_entry(category, fxlow)
     return (e.get("name") or e.get("fxtitle")) if e else None
 
 
@@ -88,11 +91,20 @@ def _multi_type_blocks() -> frozenset:
 
 
 def _model_block(b: bytes):
+    """Per-block model record = [b0][b1][b2][category]. Returns (idx, cat, fxlow):
+    idx = b0 (the slot/index for N->S and AMP), cat = category, and fxlow = the
+    full 3-byte little-endian model index (b0|b1<<8|b2<<16) used to resolve names.
+    Factory models have b1=b2=0 (fxlow==idx); User IRs set b2 (fxid 0x0A10xxxx)."""
     i = b.find(bytes([0x03, 0x30, 0x28, 0x00]))
     if i < 0:
         return []
     val = b[i + 4 : i + 4 + 40]
-    return [(val[k * 4], val[k * 4 + 3]) for k in range(10)]
+    out = []
+    for k in range(10):
+        r = val[k * 4 : k * 4 + 4]
+        fxlow = r[0] | (r[1] << 8) | (r[2] << 16)
+        out.append((r[0], r[3], fxlow))
+    return out
 
 
 def _bypass_mask(b: bytes) -> int:
@@ -108,12 +120,12 @@ def _blocks_for(b: bytes, ns_label: dict) -> list[dict]:
     recs = _model_block(b)
     out = []
     for k, block in enumerate(BLOCK_NAMES):
-        idx, cat = recs[k] if k < len(recs) else (0, 0)
+        idx, cat, fxlow = recs[k] if k < len(recs) else (0, 0, 0)
         if block == "N->S":
             model = ns_label.get(idx) if idx else None
             btype = "SnapTone"
         else:
-            e = _model_entry(cat, idx)
+            e = _model_entry(cat, fxlow)
             model = (e.get("name") or e.get("fxtitle")) if e else None
             btype = e.get("type") if e else None
         parts = [block]
@@ -160,10 +172,10 @@ def _load() -> tuple:
     for path in sorted(glob.glob(os.path.join(EXPORT_DIR, "*.prst"))):
         b = open(path, "rb").read()
         recs = _model_block(b)
-        ns = next((idx for idx, cat in recs if cat == NS_CAT), 0)
-        cab = next((idx for idx, cat in recs if cat == CAB_CAT), 0)
-        amp = next((idx for idx, cat in recs if cat in AMP_CATS), 0)
-        amp_cat = next((cat for _, cat in recs if cat in AMP_CATS), 0x07)
+        ns = next((idx for idx, cat, _ in recs if cat == NS_CAT), 0)
+        cab = next((fx for _, cat, fx in recs if cat == CAB_CAT), 0)
+        amp = next((fx for _, cat, fx in recs if cat in AMP_CATS), 0)
+        amp_cat = next((cat for _, cat, _ in recs if cat in AMP_CATS), 0x07)
         patches.append(
             Patch(
                 slot=_slot_from_filename(path),
@@ -200,10 +212,29 @@ def _load() -> tuple:
         )
         p["blocks"] = _blocks_for(raw[p["slot"]], slot_label)
 
-    # IR/Cab inventory: every distinct CAB model referenced by a patch.
+    # IR/Cab inventory: the FULL catalog (factory cabs + all User IR slots),
+    # not just what patches happen to reference. Sorted factory-first, then
+    # User IRs; each carries a usage count for the inspector.
+    use_count: dict[int, int] = {}
+    for p in patches:
+        if not p["uses_snaptone"]:  # SnapTone patches bypass the CAB block
+            use_count[p["ir_slot"]] = use_count.get(p["ir_slot"], 0) + 1
     irs: list[Ir] = []
-    for cab in sorted({p["ir_slot"] for p in patches}):
-        irs.append(Ir(slot=cab, name=_model_name(CAB_CAT, cab) or f"Cab #{cab}"))
+    for fxid, e in _ring().items():
+        if e.get("module") != "CAB":
+            continue
+        fxlow = fxid & 0xFFFFFF
+        is_user = "User IR" in (e.get("name") or "")
+        irs.append(
+            Ir(
+                slot=fxlow,
+                name=e.get("name") or e.get("fxtitle") or f"Cab #{fxlow}",
+                type=e.get("type") or "",
+                is_user_ir=is_user,
+                used=use_count.get(fxlow, 0),
+            )
+        )
+    irs.sort(key=lambda i: (i["is_user_ir"], i["slot"]))
 
     return patches, snaptones, irs
 

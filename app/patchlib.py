@@ -63,6 +63,7 @@ class Patch(TypedDict):
     ir_name: str
     amp_name: str
     blocks: list  # per-block detail (see _blocks_for)
+    settings: dict  # patch-level settings (patch_vol, bpm)
 
 
 @lru_cache(maxsize=1)
@@ -114,16 +115,75 @@ def _bypass_mask(b: bytes) -> int:
     return struct.unpack_from("<I", b, i + 4)[0] if i >= 0 else 0
 
 
+def _patch_settings(b: bytes) -> dict:
+    """Patch-level settings from the group-0x20 records. id=1 Patch VOL, id=2 BPM
+    are confirmed against hardware; ids 3-10 (EXP / footswitch assignments) are
+    not yet decoded (need multi-preset diffs) so are omitted rather than guessed."""
+    out = {}
+    i = 0x55
+    while i + 4 <= len(b) and b[i + 1] == 0x20:
+        rid = b[i]
+        ln = struct.unpack_from("<H", b, i + 2)[0]
+        if ln not in (1, 2, 4):
+            break
+        val = struct.unpack_from("<i", b[i + 4 : i + 4 + ln].ljust(4, b"\0"))[0]
+        if rid == 0x01:
+            out["patch_vol"] = val
+        elif rid == 0x02:
+            out["bpm"] = val
+        i += 4 + ln
+    return out
+
+
+def _param_floats(b: bytes) -> list:
+    """The 80-float parameter array (record id=4 grp=0x30, len 0x140) = 10 blocks
+    x 8 float32 slots. A param's value = floats[block_index*8 + algId]."""
+    i = b.find(bytes([0x04, 0x30, 0x40, 0x01]))
+    if i < 0:
+        return [0.0] * 80
+    return list(struct.unpack_from("<80f", b, i + 4))
+
+
+def _fmt_param(value: float, toggle: bool, unit: str) -> str:
+    if toggle:
+        return "On" if round(value) != 0 else "Off"
+    v = str(int(round(value))) if abs(value - round(value)) < 1e-4 else f"{value:.2f}"
+    return f"{v} {unit}".strip() if unit else v
+
+
+def _params_for(entry: Optional[dict], floats: list, block_index: int) -> list:
+    if not entry:
+        return []
+    out = []
+    base = block_index * 8
+    for p in entry.get("params") or []:
+        slot = base + p["algId"]
+        if slot >= len(floats):
+            continue
+        val = floats[slot]
+        out.append(
+            {
+                "name": p["name"],
+                "value": round(val, 2),
+                "display": _fmt_param(val, p["toggle"], p.get("unit", "")),
+                "toggle": p["toggle"],
+            }
+        )
+    return out
+
+
 def _blocks_for(b: bytes, ns_label: dict) -> list[dict]:
     """Per-block detail: name, active flag, model type + model, and a display
     label 'BLOCK · Type · Model' (type omitted for single-type blocks)."""
     mask = _bypass_mask(b)
     recs = _model_block(b)
+    floats = _param_floats(b)
     out = []
     for k, block in enumerate(BLOCK_NAMES):
         idx, cat, fxlow = recs[k] if k < len(recs) else (0, 0, 0)
         official = None
         if block == "N->S":
+            e = _model_entry(NS_CAT, idx)  # N->S param defs (Gain/VOL/Bass/Mid/Treble)
             model = ns_label.get(idx) if idx else None
             btype = "SnapTone"
         else:
@@ -154,6 +214,7 @@ def _blocks_for(b: bytes, ns_label: dict) -> list[dict]:
                 "label_official": _label(
                     official or model
                 ),  # falls back to device name
+                "params": _params_for(e, floats, k),
             }
         )
     return out
@@ -219,6 +280,7 @@ def _load() -> tuple:
                 ir_name=_cab_name(cab) or f"Cab #{cab}",
                 amp_name=_model_name(amp_cat, amp) or f"Amp #{amp}",
                 blocks=[],  # filled below (needs the SnapTone slot->name map)
+                settings=_patch_settings(b),
             )
         )
         raw[patches[-1]["slot"]] = b

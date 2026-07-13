@@ -170,6 +170,52 @@
     return c;
   }
 
+  const expanded = new Set(); // preset slots currently expanded
+
+  function blockLabel(b) {
+    return officialOn() && b.official ? b.label_official : b.label;
+  }
+
+  function renderDetail(p) {
+    const d = document.createElement("div");
+    d.className = "preset-detail";
+    // patch settings
+    const s = p.settings || {};
+    const settingBits = [];
+    if (s.patch_vol !== undefined) settingBits.push(`Patch VOL <b>${s.patch_vol}</b>`);
+    if (s.bpm !== undefined) settingBits.push(`BPM <b>${s.bpm}</b>`);
+    if (settingBits.length) {
+      const ps = document.createElement("div");
+      ps.className = "patch-settings";
+      ps.innerHTML = settingBits.join(" &nbsp;·&nbsp; ");
+      d.appendChild(ps);
+    }
+    // every block, active first-class + bypassed dimmed
+    p.blocks.forEach((b) => {
+      if (!b.model && !b.params.length) return; // skip truly empty slots
+      const bd = document.createElement("div");
+      bd.className = "block-detail" + (b.active ? "" : " bypassed");
+      const state = b.active ? "on" : "off";
+      const chipCls = `chip blk-${b.block.replace(/[^a-z]/gi, "").toLowerCase()}`;
+      bd.innerHTML =
+        `<div class="block-detail-head"><span class="${chipCls}">${blockLabel(b)}</span>` +
+        `<span class="state ${state}">${state}</span></div>`;
+      if (b.params.length) {
+        const grid = document.createElement("div");
+        grid.className = "param-grid";
+        b.params.forEach((pr) => {
+          const cell = document.createElement("div");
+          cell.className = "param" + (pr.toggle ? " toggle" : "");
+          cell.innerHTML = `<span class="pname">${pr.name}</span><span class="pval">${pr.display}</span>`;
+          grid.appendChild(cell);
+        });
+        bd.appendChild(grid);
+      }
+      d.appendChild(bd);
+    });
+    return d;
+  }
+
   function renderPresets() {
     const shown = patches.filter((p) => matchesFilters(p) && matchesSearch(p));
     listEl.innerHTML = "";
@@ -178,10 +224,18 @@
     shown.forEach((p) => {
       const li = document.createElement("li");
       li.className = "preset-row";
+      const isOpen = expanded.has(p.slot);
       const head = document.createElement("div");
       head.className = "preset-head";
-      head.innerHTML = `<span class="preset-num">#${p.slot}</span> <span class="preset-name">${p.name}</span>` +
+      head.innerHTML =
+        `<span class="caret">${isOpen ? "▾" : "▸"}</span>` +
+        `<span class="preset-num">#${p.slot}</span> <span class="preset-name">${p.name}</span>` +
         (p.uses_snaptone ? ' <span class="badge st">SnapTone</span>' : "");
+      head.addEventListener("click", () => {
+        if (expanded.has(p.slot)) expanded.delete(p.slot);
+        else expanded.add(p.slot);
+        renderPresets();
+      });
       const chips = document.createElement("div");
       chips.className = "chip-row";
       activeBlocks(p).forEach((b) => chips.appendChild(chip(b)));
@@ -189,6 +243,7 @@
         chips.innerHTML = '<span class="subtitle">empty preset</span>';
       li.appendChild(head);
       li.appendChild(chips);
+      if (isOpen) li.appendChild(renderDetail(p));
       listEl.appendChild(li);
     });
   }

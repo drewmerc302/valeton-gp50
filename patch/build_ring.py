@@ -25,6 +25,37 @@ def clean_origin(o: str) -> str:
     return o
 
 
+def unit_from_range(rng: str) -> str:
+    """Extract a display unit from a valueRange like '0.10Hz-10.00Hz' -> 'Hz',
+    '0-1000ms' -> 'ms'. Returns '' for plain numeric or Off/On ranges."""
+    if not rng or "/" in rng:
+        return ""
+    m = re.search(r"[0-9.]([A-Za-z%]+)\s*$", rng)  # trailing unit on the last number
+    return m.group(1) if m else ""
+
+
+def params_of(entry: dict) -> list:
+    """Param definitions in model order: name + algId (float-slot index) + toggle
+    flag + unit. Value at runtime = float[block*8 + algId]."""
+    out = []
+    for p in entry.get("alg") or []:
+        try:
+            algid = int(p.get("algId", "-1"))
+        except (TypeError, ValueError):
+            algid = -1
+        if algid < 0:
+            continue
+        out.append(
+            {
+                "name": p.get("name"),
+                "algId": algid,
+                "toggle": p.get("widgetType") == 1 or (p.get("valueRange") == "Off/On"),
+                "unit": unit_from_range(p.get("valueRange") or ""),
+            }
+        )
+    return out
+
+
 def main():
     d = json.load(open(SUITE))
     ring = {}
@@ -40,10 +71,14 @@ def main():
                 "fxtitle": e.get("fxtitle"),
                 "type": e.get("type"),
                 "origin": clean_origin(e.get("origin")),
+                "params": params_of(e),
             }
     json.dump({str(k): v for k, v in ring.items()}, open(OUT, "w"))
     withorigin = sum(1 for v in ring.values() if v["origin"])
-    print(f"wrote {OUT}: {len(ring)} models, {withorigin} with an official origin")
+    withparams = sum(1 for v in ring.values() if v["params"])
+    print(
+        f"wrote {OUT}: {len(ring)} models, {withorigin} origins, {withparams} with params"
+    )
 
 
 if __name__ == "__main__":

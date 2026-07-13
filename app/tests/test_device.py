@@ -70,6 +70,23 @@ def test_facets_models_carry_official():
     assert {"model", "official"} <= set(amp["models"][0])
 
 
+def test_block_params_decode_against_hardware():
+    # US Lead (preset 15) — values verified against Suite Edit screenshots
+    from app import patchlib
+
+    p = next(x for x in patchlib.all_patches() if x["name"] == "US Lead")
+    by = {b["block"]: b for b in p["blocks"]}
+    pre = {pr["name"]: pr["display"] for pr in by["PRE"]["params"]}
+    assert pre == {"Sustain": "20", "Attack": "30", "VOL": "50", "Clip": "10"}
+    amp = {pr["name"]: pr["display"] for pr in by["AMP"]["params"]}
+    assert amp["Middle"] == "40" and amp["Treble"] == "60" and amp["Bright"] == "On"
+    mod = {pr["name"]: pr["display"] for pr in by["MOD"]["params"]}
+    assert mod["Rate"] == "0.50 Hz" and mod["Sync"] == "Off"
+    rvb = {pr["name"]: pr["display"] for pr in by["RVB"]["params"]}
+    assert rvb["Trail"] == "Off"  # algId-based mapping, not positional
+    assert p["settings"] == {"patch_vol": 50, "bpm": 120}
+
+
 def test_official_names_origin():
     from app import patchlib
 

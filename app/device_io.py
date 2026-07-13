@@ -48,17 +48,29 @@ def sync_snaptones(timeout: float = 25.0) -> dict:
                 "error": "device did not respond (is it connected and Suite closed?)",
             }
         if proc.returncode != 0:
-            msg = (proc.stderr or proc.stdout or "").strip().splitlines()[-1:] or [
-                "read failed"
-            ]
+            err = (proc.stderr or proc.stdout or "").strip()
+            if "no ports available" in err or "no ports" in err:
+                return {
+                    "ok": False,
+                    "error": "pedal not found — connect it via USB and close Valeton Suite",
+                }
+            msg = err.splitlines()[-1:] or ["read failed"]
             return {"ok": False, "error": msg[0]}
         try:
-            snaps = json.load(open(BANK_MAP)).get("snaptone", {})
+            bank = json.load(open(BANK_MAP))
         except Exception as e:  # noqa: BLE001
             return {
                 "ok": False,
                 "error": f"read succeeded but bank_map unreadable: {e}",
             }
-        return {"ok": True, "count": len(snaps), "snaptones": snaps}
+        snaps = bank.get("snaptone", {})
+        irs = bank.get("ir", {})
+        return {
+            "ok": True,
+            "count": len(snaps),
+            "ir_count": len(irs),
+            "snaptones": snaps,
+            "irs": irs,
+        }
     finally:
         _lock.release()

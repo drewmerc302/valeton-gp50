@@ -35,6 +35,7 @@ AMP_CATS = (0x07, 0x08)
 
 # blocks in bitmask/model-record order (bit i = block i active)
 BLOCK_NAMES = ["NR", "PRE", "DST", "AMP", "CAB", "EQ", "MOD", "DLY", "RVB", "N->S"]
+USER_IR_BASE = 0x100000  # CAB fxlow >= this => a User IR slot (0x0A10xxxx fxid)
 
 
 class SnapTone(TypedDict):
@@ -130,6 +131,8 @@ def _blocks_for(b: bytes, ns_label: dict) -> list[dict]:
             model = (e.get("name") or e.get("fxtitle")) if e else None
             btype = e.get("type") if e else None
             official = (e.get("origin") or None) if e else None
+            if block == "CAB":
+                model = _cab_name(fxlow) or model  # prefer real User IR device name
 
         def _label(name):
             parts = [block]
@@ -176,6 +179,23 @@ def _bank_labels() -> dict:
 
 
 @lru_cache(maxsize=1)
+def _bank_irs() -> dict:
+    """User-IR slot -> real device name (from bank_map.json 'ir'), if synced."""
+    if os.path.exists(BANK_MAP):
+        return {int(k): v for k, v in json.load(open(BANK_MAP)).get("ir", {}).items()}
+    return {}
+
+
+def _cab_name(fxlow: int) -> Optional[str]:
+    """Resolve a CAB reference to a name. Factory cabs via the catalog; User IRs
+    prefer the real device name (bank_map) over the generic 'User IR N'."""
+    if fxlow >= USER_IR_BASE:
+        slot = fxlow - USER_IR_BASE
+        return _bank_irs().get(slot) or f"User IR {slot + 1}"
+    return _model_name(CAB_CAT, fxlow)
+
+
+@lru_cache(maxsize=1)
 def _load() -> tuple:
     patches: list[Patch] = []
     raw: dict[int, bytes] = {}
@@ -196,7 +216,7 @@ def _load() -> tuple:
                 ir_slot=cab,
                 amp_slot=amp,
                 snaptone_name="",  # filled below
-                ir_name=_model_name(CAB_CAT, cab) or f"Cab #{cab}",
+                ir_name=_cab_name(cab) or f"Cab #{cab}",
                 amp_name=_model_name(amp_cat, amp) or f"Amp #{amp}",
                 blocks=[],  # filled below (needs the SnapTone slot->name map)
             )
@@ -235,10 +255,12 @@ def _load() -> tuple:
             continue
         fxlow = fxid & 0xFFFFFF
         is_user = "User IR" in (e.get("name") or "")
+        # User IRs: prefer the real device name (bank_map) over "User IR N"
+        name = _cab_name(fxlow) if is_user else (e.get("name") or e.get("fxtitle"))
         irs.append(
             Ir(
                 slot=fxlow,
-                name=e.get("name") or e.get("fxtitle") or f"Cab #{fxlow}",
+                name=name or f"Cab #{fxlow}",
                 type=e.get("type") or "",
                 is_user_ir=is_user,
                 used=use_count.get(fxlow, 0),
@@ -253,6 +275,7 @@ def reload() -> None:
     """Drop caches so the next read reflects an updated bank_map.json / exports."""
     _load.cache_clear()
     _bank_labels.cache_clear()
+    _bank_irs.cache_clear()
 
 
 def all_patches() -> list[Patch]:
@@ -267,18 +290,24 @@ def facets() -> dict:
         for blk in p["blocks"]:
             if not blk["active"]:
                 continue
-            d = blocks.setdefault(blk["block"], {"types": set(), "models": set()})
+            d = blocks.setdefault(blk["block"], {"types": set(), "models": {}})
             if blk["type"]:
                 d["types"].add(blk["type"])
             if blk["model"]:
-                d["models"].add(blk["model"])
+                d["models"][blk["model"]] = blk.get(
+                    "official"
+                )  # model -> official|None
     order = {b: i for i, b in enumerate(BLOCK_NAMES)}
     return {
         "blocks": [
             {
                 "block": b,
                 "types": sorted(blocks[b]["types"]),
-                "models": sorted(blocks[b]["models"]),
+                # each model as {model, official} so the filter dropdown can show both
+                "models": [
+                    {"model": m, "official": blocks[b]["models"][m]}
+                    for m in sorted(blocks[b]["models"])
+                ],
             }
             for b in sorted(blocks, key=lambda x: order.get(x, 99))
         ]

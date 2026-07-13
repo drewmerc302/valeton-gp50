@@ -53,6 +53,23 @@ def test_block_detail_and_facets():
     assert "OD" in dst["types"] and "Fuzz" in dst["types"]
 
 
+def test_user_ir_uses_device_name_when_synced():
+    from app import patchlib
+
+    # bank_map.json carries real device IR names (from a live 0x20 read); a patch
+    # referencing a User IR should show that name, not the generic "User IR N".
+    tc = next(p for p in patchlib.all_patches() if p["name"] == "Twin Clean")
+    cab = next(b for b in tc["blocks"] if b["block"] == "CAB")
+    assert cab["model"] and not cab["model"].startswith("User IR")
+
+
+def test_facets_models_carry_official():
+    fac = client.get("/api/device/facets").json()
+    amp = next(b for b in fac["blocks"] if b["block"] == "AMP")
+    assert amp["models"] and isinstance(amp["models"][0], dict)
+    assert {"model", "official"} <= set(amp["models"][0])
+
+
 def test_official_names_origin():
     from app import patchlib
 

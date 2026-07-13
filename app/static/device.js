@@ -200,7 +200,7 @@
       const r = await fetch("/api/device/sync", { method: "POST" });
       const body = await r.json();
       if (!body.ok) throw new Error(body.error || "sync failed");
-      status.textContent = `Synced ${body.count} SnapTones from device.`;
+      status.textContent = `Synced ${body.count} SnapTones and ${body.ir_count ?? 0} User IRs from device.`;
       await loadInventory();
       $("ct-snaptone").textContent = `(${inv.snaptones.length})`;
       $("ct-ir").textContent = `(${inv.irs.length})`;

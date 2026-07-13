@@ -81,7 +81,17 @@
       typeSel.innerHTML = "";
       modelSel.innerHTML = "";
       fill(typeSel, ["any type", ...(fb ? fb.types : [])]);
-      fill(modelSel, ["any model", ...(fb ? fb.models : [])]);
+      // models carry an optional official name -> show "Device / Official"
+      const anyOpt = document.createElement("option");
+      anyOpt.textContent = "any model";
+      anyOpt.value = "";
+      modelSel.appendChild(anyOpt);
+      (fb ? fb.models : []).forEach((m) => {
+        const opt = document.createElement("option");
+        opt.value = m.model;
+        opt.textContent = m.official ? `${m.model} / ${m.official}` : m.model;
+        modelSel.appendChild(opt);
+      });
       addBtn.disabled = !fb;
     }
     blockSel.addEventListener("change", refresh);

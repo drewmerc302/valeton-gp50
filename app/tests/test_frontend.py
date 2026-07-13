@@ -31,13 +31,14 @@ def test_index_serves_html_with_key_hooks():
         assert hook in html, f"missing hook: {hook}"
 
 
-def test_format_070_present_but_disabled():
+def test_format_070_present_and_enabled():
+    # T1b wired up the 0.7.0 export path — the radio is no longer disabled.
     html = client.get("/").text
     assert 'id="format-070"' in html
-    # order-independent check that the 0.7.0 radio carries disabled
+    # order-independent check that the 0.7.0 radio does NOT carry disabled
     start = html.index('id="format-070"')
     tag_end = html.index(">", start)
-    assert "disabled" in html[start:tag_end]
+    assert "disabled" not in html[start:tag_end]
 
 
 def test_static_app_js_served():

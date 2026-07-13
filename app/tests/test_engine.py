@@ -209,24 +209,49 @@ def test_unsupported_architecture_isolated(tmp_path, monkeypatch):
     assert "unsupported" in state.error.lower()
 
 
-# --- 0.7.0 output format: not yet wired ---
+# --- 0.7.0 output format: wired to train_a1_070.py in the .venv (0.13.0) venv ---
 
 
-def test_output_format_0_7_0_raises_not_implemented(tmp_path, monkeypatch):
-    def _boom(cmd, **kwargs):
-        raise AssertionError(
-            "subprocess should not be invoked when output_format is rejected"
+def _fake_subprocess_070(cmd, **kwargs):
+    """Canned success for render_a2.py and train_a1_070.py (0.7.0 export)."""
+    cmd = [str(c) for c in cmd]
+    script = cmd[1]
+    if "render_a2.py" in script:
+        y_out = Path(cmd[4])
+        y_out.write_bytes(b"fake wav bytes")
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout="rendered 1000 samples\n", stderr=""
         )
+    if "train_a1_070.py" in script:
+        outdir = Path(cmd[4])
+        a1 = outdir / "a1.nam"
+        _write_nam(a1, "WaveNet", "0.7.0")
+        stdout = (
+            "FORMAT: version=0.7.0 arch=WaveNet head=True -> OK (0.7.0 export)\n"
+            "DISTILL_ESR: 0.062862\n"
+            f"A1_NAM: {a1}\n"
+        )
+        return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr="")
+    raise AssertionError(f"unexpected command: {cmd}")
 
-    monkeypatch.setattr(engine.subprocess, "run", _boom)
+
+def test_output_format_0_7_0_invokes_train_a1_070(tmp_path, monkeypatch):
+    monkeypatch.setattr(engine.subprocess, "run", _fake_subprocess_070)
 
     src = tmp_path / "capture.nam"
     _write_nam(src, "SlimmableContainer", "0.7.0")
 
     job = _make_job(tmp_path, [src], output_format="0.7.0")
-    cb, _ = _collect_cb()
-    with pytest.raises(NotImplementedError):
-        run_job(job, cb)
+    cb, events = _collect_cb()
+    run_job(job, cb)  # must not raise NotImplementedError
+
+    state = job.files[0]
+    assert state.status == "done"
+    assert state.esr == pytest.approx(0.062862)
+    assert state.format_ok is True
+    assert Path(state.output_path).exists()
+    statuses = [s for _, s in events]
+    assert statuses == ["detecting", "rendering", "training", "done"]
 
 
 def test_unknown_output_format_raises_value_error(tmp_path):

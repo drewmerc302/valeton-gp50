@@ -240,6 +240,11 @@ button:disabled {
   color: var(--muted);
 }
 
+.hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .epochs-row {
   display: flex;
   gap: 0.5rem;

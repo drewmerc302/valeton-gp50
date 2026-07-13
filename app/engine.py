@@ -1,14 +1,22 @@
 """Conversion engine: run NAM A2->A1 batch jobs with progress callbacks.
 
-Wraps the existing two-venv distillation pipeline
-(a2a1/render_a2.py in the 0.13.0 venv, a2a1/train_a1.py in the 0.12.2 venv)
-as an importable, callback-driven job runner:
+Wraps the existing two-venv distillation pipeline as an importable,
+callback-driven job runner. Rendering always happens in the 0.13.0 venv
+(the only one that can load the A2 SlimmableContainer format); training
+happens in whichever venv produces the requested output format:
 
-    A2.nam --(render, .venv/0.13.0)--> y.wav --(train+export, .venv-a1/0.12.2)--> A1.nam
+    output_format='0.5x':
+        A2.nam --(render, .venv/0.13.0)--> y.wav
+               --(train+export, .venv-a1/0.12.2, a2a1/train_a1.py)--> A1.nam (0.5.x)
 
-Already-A1 0.5.x files are detected and copied through untouched. This module
-does no device I/O of any kind — it only shells out to the two local training
-venvs and touches the filesystem.
+    output_format='0.7.0':
+        A2.nam --(render, .venv/0.13.0)--> y.wav
+               --(train+export, .venv/0.13.0, a2a1/train_a1_070.py)--> A1.nam (0.7.0)
+
+Already-A1 0.5.x files are detected and copied through untouched (regardless
+of requested output_format — no re-distillation of already-compatible files).
+This module does no device I/O of any kind — it only shells out to the local
+training venvs and touches the filesystem.
 """
 
 from __future__ import annotations
@@ -140,7 +148,8 @@ def _convert_one(
         )
         return
 
-    # A2 -> A1 distillation: render (0.13.0 venv), then train/export (0.12.2 venv).
+    # A2 -> A1 distillation: render (0.13.0 venv), then train/export in the
+    # venv that matches the requested output format.
     with tempfile.TemporaryDirectory(prefix=f"gp50_{state.name}_") as workdir_s:
         workdir = Path(workdir_s)
         y_wav = workdir / "y.wav"
@@ -168,10 +177,16 @@ def _convert_one(
             return
 
         _update(state, progress_cb, status="training", progress=0.5)
+        if job.output_format == "0.7.0":
+            train_venv = job.venv_a2
+            train_script = A2A1_DIR / "train_a1_070.py"
+        else:
+            train_venv = job.venv_a1
+            train_script = A2A1_DIR / "train_a1.py"
         train_result = _run(
             [
-                str(job.venv_a1),
-                str(A2A1_DIR / "train_a1.py"),
+                str(train_venv),
+                str(train_script),
                 str(job.di_path),
                 str(y_wav),
                 str(workdir),
@@ -235,13 +250,11 @@ def run_job(job: ConvertJob, progress_cb: ProgressCallback) -> ConvertJob:
     are isolated to that file's FileState (status='failed') and never raise
     out of this function — the rest of the batch keeps going.
 
-    Job-level misconfiguration (unimplemented output_format, missing venvs or
+    Job-level misconfiguration (unknown output_format, missing venvs or
     DI) raises immediately, before any file work starts.
     """
     if job.output_format not in ("0.5x", "0.7.0"):
         raise ValueError(f"unknown output_format {job.output_format!r}")
-    if job.output_format == "0.7.0":
-        raise NotImplementedError("0.7.0 export not yet wired — see task T1b")
     if not job.venv_a2.exists():
         raise FileNotFoundError(f"0.13.0 venv python not found at {job.venv_a2}")
     if not job.venv_a1.exists():

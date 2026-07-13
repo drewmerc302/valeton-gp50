@@ -1,9 +1,9 @@
 # STATUS — GP-50 Converter MVP
-updated: 2026-07-13 tick-5 | branch: mvp-converter | phase: 5 | acceptance: 1/7
+updated: 2026-07-13 tick-6 | branch: mvp-converter | phase: 5 | acceptance: 2/7
 
 ## Now / next
-- T4 DONE: device usage-inspector at /device — app/device_stub.py (mock inventory + patches_using_snaptone/ir, mock→real seam w/ TODO), app/api_device.py (/api/device/inventory + /usage), device.html/js w/ prominent MOCK banner + nav. Reviewed: no device I/O, banner present, 404-vs-empty handled. Evidence: 31 tests pass (9 new). Committed. → Acceptance #4 MET.
-- Next: T1b 0.7.0 export path (train/export in .venv 0.13.0 w/ new-schema WaveNet config). Trickiest task; exact config handed to the agent.
+- T1b DONE: a2a1/train_a1_070.py (0.13.0 new-schema WaveNet trainer) + engine dispatch (0.7.0→.venv/train_a1_070.py). REAL fast train verified: /tmp/t070/a1.nam = version 0.7.0, WaveNet (independently confirmed). 0.5.x path untouched. 0.7.0 toggle enabled in UI. Evidence: 31 tests pass. Committed. → Acceptance #3 MET (both formats load-valid: 0.5.x out/A2.nam + 0.7.0 verified).
+- Next: T5 — install playwright+chromium; headless e2e that drives a REAL fast conversion via the UI + saves screenshots (convert progress/done + device page); verify batch+bad-file isolation. This produces the screenshots Drew reviews.
 
 ## Backlog (DAG)
 - [x] T0  scaffold FastAPI app, .venv-app, pytest harness, run.sh        [done]  (2 passed)
@@ -13,12 +13,12 @@ updated: 2026-07-13 tick-5 | branch: mvp-converter | phase: 5 | acceptance: 1/7
 - [x] T4  device-stub screen: mocked SnapTone/IR→patch usage inspector + MOCK banner   (deps: T0)  [done]  (31 passed, #4 MET)
 - [ ] T5  robustness + tests: failure isolation (have it), error surfacing in UI, unit + HEADLESS e2e (real fast-preset convert via API) + UI screenshot   (deps: T2,T3)  [todo]
 - [ ] T6  acceptance sweep + run.sh + README; verify all 7 criteria   (deps: T3,T4,T5)  [todo]
-- [ ] T1b 0.7.0 export path (train/export in .venv 0.13.0 with new-schema WaveNet config)   (deps: T1)  [todo]
+- [x] T1b 0.7.0 export path (.venv 0.13.0 + a2a1/train_a1_070.py)   (deps: T1)  [done]  (real train → v0.7.0, #3 MET)
 
 ## Acceptance (MVP_REQUIREMENTS.md §Acceptance) — 0/7
 1. [ ] UI: A2.nam → valid 0.5.x A1, format OK, progress shown
 2. [ ] batch ≥2 + bad-file isolation   (engine supports; needs UI/e2e)
-3. [ ] both output formats load-valid   (needs T1b)
+3. [x] both output formats load-valid  (0.5.x out/A2.nam + 0.7.0 /tmp verified)
 4. [x] usage-inspector stub w/ MOCK banner  (T4: /device, 31 tests)
 5. [ ] test suite green + headless e2e + UI screenshot
 6. [ ] ESR under threshold (fast <0.05, full <0.015)

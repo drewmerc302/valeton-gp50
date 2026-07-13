@@ -53,6 +53,19 @@ def test_block_detail_and_facets():
     assert "OD" in dst["types"] and "Fuzz" in dst["types"]
 
 
+def test_official_names_origin():
+    from app import patchlib
+
+    great = next(p for p in patchlib.all_patches() if p["name"] == "GreatPedal")
+    dst = next(b for b in great["blocks"] if b["block"] == "DST" and b["active"])
+    assert dst["official"] == "Ibanez TS808"  # Green OD -> official reference
+    assert dst["label_official"] == "DST · OD · Ibanez TS808"
+    # a model without an official reference keeps its device name
+    rvb = next(b for b in great["blocks"] if b["block"] == "RVB" and b["active"])
+    assert rvb["official"] is None
+    assert rvb["label_official"] == rvb["label"]
+
+
 def test_sync_endpoint_reports_device_result(monkeypatch):
     # hermetic: fake the device read (no MIDI, no subprocess)
     from app import device_io

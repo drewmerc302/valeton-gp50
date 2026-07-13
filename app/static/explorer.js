@@ -142,12 +142,18 @@
     }
   }
 
+  const officialOn = () => $("official-toggle").checked;
+
   function chip(b) {
     const c = document.createElement("button");
     c.type = "button";
     c.className = `chip blk-${b.block.replace(/[^a-z]/gi, "").toLowerCase()}`;
-    c.textContent = b.label;
-    c.title = "Filter by this block · type · model";
+    const useOfficial = officialOn() && b.official;
+    c.textContent = useOfficial ? b.label_official : b.label;
+    if (useOfficial) c.classList.add("official");
+    c.title = b.official
+      ? `Device: ${b.label}\nOfficial: ${b.label_official}`
+      : "Filter by this block · type · model";
     c.addEventListener("click", () =>
       addFilter({ block: b.block, type: b.type, model: b.model })
     );
@@ -229,6 +235,7 @@
   }
 
   $("save-filter").addEventListener("click", saveCurrent);
+  $("official-toggle").addEventListener("change", renderPresets);
   searchEl.addEventListener("input", render);
 
   async function init() {

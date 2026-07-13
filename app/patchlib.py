@@ -121,6 +121,7 @@ def _blocks_for(b: bytes, ns_label: dict) -> list[dict]:
     out = []
     for k, block in enumerate(BLOCK_NAMES):
         idx, cat, fxlow = recs[k] if k < len(recs) else (0, 0, 0)
+        official = None
         if block == "N->S":
             model = ns_label.get(idx) if idx else None
             btype = "SnapTone"
@@ -128,19 +129,28 @@ def _blocks_for(b: bytes, ns_label: dict) -> list[dict]:
             e = _model_entry(cat, fxlow)
             model = (e.get("name") or e.get("fxtitle")) if e else None
             btype = e.get("type") if e else None
-        parts = [block]
-        if btype and block in _multi_type_blocks():
-            parts.append(btype)
-        if model:
-            parts.append(model)
+            official = (e.get("origin") or None) if e else None
+
+        def _label(name):
+            parts = [block]
+            if btype and block in _multi_type_blocks():
+                parts.append(btype)
+            if name:
+                parts.append(name)
+            return " · ".join(parts)
+
         out.append(
             {
                 "block": block,
                 "active": bool(mask >> k & 1),
                 "type": btype,
                 "model": model,
+                "official": official,  # official gear reference (Green OD -> Ibanez TS808)
                 "index": idx,
-                "label": " · ".join(parts),
+                "label": _label(model),
+                "label_official": _label(
+                    official or model
+                ),  # falls back to device name
             }
         )
     return out

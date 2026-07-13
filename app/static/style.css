@@ -549,6 +549,17 @@ button:disabled {
   padding-top: 0.6rem;
   border-top: 1px solid var(--border);
 }
+.official-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chip.official { border-style: dashed; font-style: italic; }
+
 .saved-filters { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .saved-pill {
   display: inline-flex;

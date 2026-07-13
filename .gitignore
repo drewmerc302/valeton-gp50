@@ -23,3 +23,9 @@ refs/*.wav
 app/node_modules/
 app/.pytest_cache/
 .pytest_cache/
+
+# RE artifacts (large / regenerable)
+re/*.dylib
+re/ghidra_*.txt
+re/*.rep
+re/*.gpr

@@ -84,7 +84,9 @@ def test_block_params_decode_against_hardware():
     assert mod["Rate"] == "0.50 Hz" and mod["Sync"] == "Off"
     rvb = {pr["name"]: pr["display"] for pr in by["RVB"]["params"]}
     assert rvb["Trail"] == "Off"  # algId-based mapping, not positional
-    assert p["settings"] == {"patch_vol": 50, "bpm": 120}
+    assert p["settings"]["patch_vol"] == 50 and p["settings"]["bpm"] == 120
+    # footswitch assignments (US Lead: FS1=DST(block 2), FS2=DLY(block 7))
+    assert p["settings"]["fs1"] == [2] and p["settings"]["fs2"] == [7]
 
 
 def test_edit_endpoint_writes_params_bypass_settings():
@@ -108,6 +110,21 @@ def test_edit_endpoint_writes_params_bypass_settings():
     assert d[patchlib.CRC_OFF] == patchlib._crc8(
         d[patchlib.CRC_OFF + 1 :]
     )  # CRC refixed
+
+
+def test_edit_footswitch_assignment_max_two():
+    from app import patchlib
+
+    d = client.post(
+        "/api/device/edit",
+        json={
+            "patch_slot": 15,
+            "footswitches": {"fs1": [0, 3], "fs2": [8]},
+        },
+    ).content
+    fs1, fs2 = patchlib._footswitches(bytes(d))
+    assert fs1 == [0, 3] and fs2 == [8]
+    assert d[patchlib.CRC_OFF] == patchlib._crc8(d[patchlib.CRC_OFF + 1 :])
 
 
 def test_edit_leaves_other_params_untouched():

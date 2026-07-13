@@ -590,6 +590,15 @@ button:disabled {
 .state-toggle.on { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); border-color: var(--ok); }
 .state-toggle.off { color: var(--muted); background: var(--track); }
 
+.fs-toggle {
+  font-size: 0.6rem; letter-spacing: 0.03em; font-weight: 600;
+  padding: 0.1em 0.45em; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--track); color: var(--muted);
+}
+.fs-toggle.on { color: var(--accent-text); background: var(--accent); border-color: var(--accent); }
+.fs-toggle.full { opacity: 0.35; cursor: not-allowed; }
+.fs-toggle:disabled { pointer-events: none; }
+
 .patch-settings { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
 .patch-set { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--muted); }
 .patch-set input[type="range"] { accent-color: var(--accent); width: 120px; }

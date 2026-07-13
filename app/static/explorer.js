@@ -178,12 +178,29 @@
   }
 
   function getEdit(slot) {
-    if (!edits.has(slot)) edits.set(slot, { params: {}, bypass: {}, settings: {} });
+    if (!edits.has(slot)) edits.set(slot, { params: {}, bypass: {}, settings: {}, footswitches: null });
     return edits.get(slot);
   }
   function isDirty(slot) {
     const e = edits.get(slot);
-    return e && (Object.keys(e.params).length || Object.keys(e.bypass).length || Object.keys(e.settings).length);
+    return e && (Object.keys(e.params).length || Object.keys(e.bypass).length ||
+      Object.keys(e.settings).length || e.footswitches);
+  }
+  // current footswitch assignment {fs1:[...], fs2:[...]} (pending edit wins)
+  function curFS(p) {
+    const e = getEdit(p.slot);
+    if (e.footswitches) return e.footswitches;
+    const s = p.settings || {};
+    return { fs1: (s.fs1 || []).slice(), fs2: (s.fs2 || []).slice() };
+  }
+  function toggleFS(p, blkIdx, fsKey) {
+    const e = getEdit(p.slot);
+    if (!e.footswitches) e.footswitches = curFS(p);  // materialize on first edit
+    const arr = e.footswitches[fsKey];
+    const at = arr.indexOf(blkIdx);
+    if (at >= 0) arr.splice(at, 1);
+    else if (arr.length < 2) arr.push(blkIdx);  // device cap: 2 blocks per FS
+    renderPresets();
   }
   // current value for a param (pending edit wins over stored value)
   function curVal(slot, blkIdx, pr) {
@@ -250,6 +267,23 @@
         renderPresets();
       });
       head.appendChild(sw);
+
+      // FS1 / FS2 assignment toggles (max 2 blocks per footswitch)
+      const fs = curFS(p);
+      ["fs1", "fs2"].forEach((fsKey) => {
+        const on = fs[fsKey].includes(blkIdx);
+        const full = fs[fsKey].length >= 2 && !on;
+        const fb = document.createElement("button");
+        fb.type = "button";
+        fb.className = "fs-toggle" + (on ? " on" : "") + (full ? " full" : "");
+        fb.textContent = fsKey.toUpperCase();
+        fb.disabled = full;
+        fb.title = full
+          ? `${fsKey.toUpperCase()} already has 2 blocks`
+          : `Assign this block to ${fsKey.toUpperCase()}`;
+        if (!full) fb.addEventListener("click", () => toggleFS(p, blkIdx, fsKey));
+        head.appendChild(fb);
+      });
       bd.appendChild(head);
 
       if (b.params.length) {
@@ -319,7 +353,10 @@
       const r = await fetch("/api/device/edit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patch_slot: p.slot, params: e.params, bypass: e.bypass, settings: e.settings }),
+        body: JSON.stringify({
+          patch_slot: p.slot, params: e.params, bypass: e.bypass,
+          settings: e.settings, footswitches: e.footswitches || {},
+        }),
       });
       if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
       const disp = r.headers.get("content-disposition") || "";

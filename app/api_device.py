@@ -103,6 +103,7 @@ class EditRequest(BaseModel):
     params: dict[int, dict[int, float]] = {}  # {block_index: {algId: value}}
     bypass: dict[int, bool] = {}  # {block_index: active}
     settings: dict = {}  # {patch_vol, bpm}
+    footswitches: dict[str, list[int]] = {}  # {"fs1": [block_idx], "fs2": [...]}
 
 
 @router.post("/edit")
@@ -112,7 +113,12 @@ def edit(req: EditRequest) -> Response:
     try:
         fname, data = patchlib.apply_edits(
             req.patch_slot,
-            {"params": req.params, "bypass": req.bypass, "settings": req.settings},
+            {
+                "params": req.params,
+                "bypass": req.bypass,
+                "settings": req.settings,
+                "footswitches": req.footswitches,
+            },
         )
     except ValueError as e:
         raise HTTPException(400, str(e))

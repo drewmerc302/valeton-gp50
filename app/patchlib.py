@@ -132,7 +132,33 @@ def _patch_settings(b: bytes) -> dict:
         elif rid == 0x02:
             out["bpm"] = val
         i += 4 + ln
+    fs1, fs2 = _footswitches(b)
+    out["fs1"] = fs1
+    out["fs2"] = fs2
     return out
+
+
+FS_TRAILER = bytes([0x03, 0x00, 0x0A, 0x00])  # id=3 grp=0 len=10 trailer record
+
+
+def _fs_offset(b: bytes) -> int:
+    """Offset of the FS mask pair in the trailer ([FS1 u32][FS2 u32][2 bytes])."""
+    i = b.rfind(FS_TRAILER)
+    return i + 4 if i >= 0 else -1
+
+
+def _footswitches(b: bytes):
+    """Footswitch assignments -> (fs1_blocks, fs2_blocks) as block-index lists.
+    Each is a 10-bit block bitmask (<=2 bits); trailer record id=3 grp=0."""
+    off = _fs_offset(b)
+    if off < 0:
+        return [], []
+    a = struct.unpack_from("<I", b, off)[0]
+    c = struct.unpack_from("<I", b, off + 4)[0]
+    return (
+        [i for i in range(10) if a >> i & 1],
+        [i for i in range(10) if c >> i & 1],
+    )
 
 
 def _param_floats(b: bytes) -> list:
@@ -505,6 +531,19 @@ def apply_edits(patch_slot: int, edits: dict) -> tuple[str, bytes]:
             elif rid == 0x02 and "bpm" in s and ln == 4:
                 struct.pack_into("<i", b, i + 4, int(s["bpm"]))
             i += 4 + ln
+
+    # 4. footswitch assignments (trailer FS1/FS2 masks, <=2 blocks each)
+    fs = edits.get("footswitches") or {}
+    if fs:
+        off = _fs_offset(b)
+        if off >= 0:
+            for key, slot_off in (("fs1", 0), ("fs2", 4)):
+                if key in fs:
+                    blocks = list(fs[key])[:2]  # device allows at most 2 per FS
+                    mask = 0
+                    for bi in blocks:
+                        mask |= 1 << int(bi)
+                    struct.pack_into("<I", b, off + slot_off, mask)
 
     b[CRC_OFF] = _crc8(b[CRC_OFF + 1 :])
     stem = os.path.basename(src).replace(".prst", "")

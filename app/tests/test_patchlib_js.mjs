@@ -82,6 +82,10 @@ for (const ap of apiInv.patches) {
   }
 }
 
+// --- snaptones + irs (Captures page) ---
+check("snaptones", JSON.stringify(inv.snaptones) === JSON.stringify(apiInv.snaptones), "snaptone list differs");
+check("irs", JSON.stringify(inv.irs) === JSON.stringify(apiInv.irs), "ir list differs");
+
 // --- facets ---
 const apiFac = await (await fetch(`${base}/api/device/facets`)).json();
 const jsFac = lib.facets(inv.patches);

@@ -79,7 +79,14 @@
   async function handle(method, path, body) {
     await ensureLoaded();
 
-    if (path === "/api/device/inventory") return J({ patches: inventory().patches, device: deviceObj() });
+    if (path === "/api/device/inventory") {
+      const inv = inventory();
+      return J({
+        source: `bundled snapshot (${store.bytes.size} presets)`,
+        device: deviceObj(), snaptones: inv.snaptones, irs: inv.irs, patches: inv.patches,
+        domains: { patch_slots: [0, 99], snaptone_slots: [0, 79], user_snaptone_slots: [50, 79], user_ir_base: 0x100000 },
+      });
+    }
     if (path === "/api/device/facets") return J(store.lib.facets(inventory().patches));
 
     let m;
@@ -120,17 +127,79 @@
     if (path === "/api/device/swap") return handleSwap(body);
     if (path === "/api/device/edit") return handleEdit(body);
 
+    if (path === "/api/device/templates" && method === "GET") {
+      return J({ templates: lsGet(LS_TPL, []).map(publicTpl) });
+    }
     if (path === "/api/device/templates/from-patch") {
+      const base = store.bytes.get(body.source_slot);
+      if (!base) return J({ detail: `unknown slot ${body.source_slot}` }, 400);
+      const patch = inventory().patches.find((p) => p.slot === body.source_slot) || {};
       const tpls = lsGet(LS_TPL, []);
-      tpls.push({ id: `${Date.now()}`, name: body.name, source_slot: body.source_slot });
-      lsSet(LS_TPL, tpls);
-      return J({ ok: true });
+      const entry = {
+        id: `${Date.now().toString(36)}${tpls.length}`, name: (body.name || "").trim(),
+        source_slot: body.source_slot, source_name: patch.name || "",
+        summary: summaryOf(patch), body_b64: bytesToB64(base),
+      };
+      tpls.push(entry); lsSet(LS_TPL, tpls);
+      return J(publicTpl(entry));
+    }
+    if ((m = path.match(/^\/api\/device\/templates\/(.+)$/)) && method === "DELETE") {
+      const id = decodeURIComponent(m[1]);
+      const tpls = lsGet(LS_TPL, []);
+      lsSet(LS_TPL, tpls.filter((t) => t.id !== id));
+      return J({ deleted: tpls.some((t) => t.id === id) });
+    }
+    if (path === "/api/device/build") return handleBuild(body);
+    if (path === "/api/device/sync" && method === "POST") {
+      return J({ ok: false, error: "SnapTone sync runs on the backend; the static app uses the bundled SnapTone names (rebuild the bundle after a backend sync)." });
     }
 
     if (path === "/api/device/scan" && method === "POST") return startScan();
     if (path === "/api/device/scan/status") return J(scanState);
 
     return J({ detail: `static_api: unhandled ${method} ${path}` }, 404);
+  }
+
+  const publicTpl = (t) => { const { body_b64, ...rest } = t; return rest; };
+  const summaryOf = (patch) => {
+    const chain = (patch.blocks || []).filter((b) => b.active)
+      .map((b) => ({ block: b.block, type: b.type ?? null, model: b.model ?? null, official: b.official ?? null, active: b.active }));
+    return { chain, uses_snaptone: !!patch.uses_snaptone, block_count: chain.length };
+  };
+
+  // Repoint a body's N->S (SnapTone) block, optionally rename, refix CRC. Port of
+  // patchlib.repoint_snaptone_body (NS_CAT = 0x0F).
+  function repointSnaptone(prst, targetNsSlot, name) {
+    if (!(targetNsSlot >= 0 && targetNsSlot <= 79)) throw new Error(`SnapTone slot out of range: ${targetNsSlot}`);
+    const b = Uint8Array.from(prst);
+    const off = PRST.modelRecOffset(b, 0x0f);
+    if (off < 0) throw new Error("patch has no N->S (SnapTone) block to repoint");
+    b[off] = targetNsSlot;
+    if (name != null) PRST.writeName(b, name);
+    PRST.refixCrc(b);
+    return b;
+  }
+
+  async function handleBuild(body) {
+    const tpl = lsGet(LS_TPL, []).find((t) => t.id === body.template_id);
+    if (!tpl) return J({ detail: `unknown template ${body.template_id}` }, 404);
+    const st = inventory().snaptones.find((s) => s.slot === body.snaptone_slot);
+    const name = body.name || (st && st.name) || `NS${body.snaptone_slot}`;
+    let prst;
+    try { prst = repointSnaptone(b64ToBytes(tpl.body_b64), body.snaptone_slot, name); }
+    catch (e) { return J({ detail: e.message }, 400); }
+    if (body.download) {
+      const safe = (name.match(/[A-Za-z0-9]+/g) || ["patch"]).join("") || "patch";
+      return new Response(prst, { status: 200, headers: { "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename="${safe}.prst"` } });
+    }
+    if (!body.confirm) return J({ ok: false, error: "confirm required" });
+    if (!(body.target_slot >= 0 && body.target_slot <= 99)) return J({ ok: false, error: "target_slot 0..99 required" });
+    if (!(await ensureConnected())) return J({ ok: false, error: "no device connected" });
+    try {
+      const r = await Bridge.writeSlot(body.target_slot, prst);
+      store.bytes.set(body.target_slot, prst); store.names.set(body.target_slot, PRST.readName(prst)); invalidate();
+      return J({ ok: true, acks: r.acks, packets: r.sent, verified_name: PRST.readName(prst) });
+    } catch (e) { return J({ ok: false, error: e.message }); }
   }
 
   function editsFrom(body) {

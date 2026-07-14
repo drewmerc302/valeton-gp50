@@ -113,6 +113,12 @@
     }
     return out;
   }
+  function modelRecOffset(b, category) {
+    const base = modelsOffset(b);
+    if (base < 0) return -1;
+    for (let k = 0; k < N_BLOCKS; k++) if (b[base + k * 4 + 3] === category) return base + k * 4;
+    return -1;
+  }
   const bypassOffset = (b) => { const i = indexOf(b, REC_BYPASS); return i >= 0 ? i + 4 : -1; };
   const paramsOffset = (b) => { const i = indexOf(b, REC_PARAMS); return i >= 0 ? i + 4 : -1; };
   function bypassMask(b) { const o = bypassOffset(b); return o >= 0 ? dv(b).getUint32(o, true) : 0; }
@@ -300,7 +306,7 @@
     NAME_OFF, BODY_OFF, NAME_LEN, CRC_OFF, SETTINGS_OFF, N_BLOCKS, N_PARAM_SLOTS,
     GP50, GP5, DEVICES, profileFor, bodyLen,
     crc8, refixCrc, detect, readName, writeName, rebuild,
-    modelsOffset, modelRecords, bypassOffset, paramsOffset, bypassMask, paramFloats, fsOffset, findTLV,
+    modelsOffset, modelRecords, modelRecOffset, bypassOffset, paramsOffset, bypassMask, paramFloats, fsOffset, findTLV,
     readVolBpm, readFootswitches, checkConvertible, convert, applyEdits,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;

@@ -40,6 +40,11 @@
       return dev().readNames();
     },
 
+    async readBankBlob(selector) {
+      if (!Bridge.connected()) throw new Error("not connected");
+      return dev().readBankBlob(selector);
+    },
+
     // Write a full .prst to a slot. The live-edit opt-in is the confirm.
     async writeSlot(slot, prst) {
       if (!Bridge.connected()) throw new Error("not connected");

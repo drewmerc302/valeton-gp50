@@ -56,7 +56,7 @@
       const bankMap = await realFetch(dataUrl("bank_map.json")).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
       const bytes = new Map(), names = new Map();
       for (const p of snap.presets) { bytes.set(p.slot, b64ToBytes(p.b64)); names.set(p.slot, p.name); }
-      store = { profile, lib: PatchLib.make(ring, bankMap, profile), bytes, names };
+      store = { profile, ring, bankMap, lib: PatchLib.make(ring, bankMap, profile), bytes, names };
       return store;
     })();
     return loading;
@@ -150,9 +150,7 @@
       return J({ deleted: tpls.some((t) => t.id === id) });
     }
     if (path === "/api/device/build") return handleBuild(body);
-    if (path === "/api/device/sync" && method === "POST") {
-      return J({ ok: false, error: "SnapTone sync runs on the backend; the static app uses the bundled SnapTone names (rebuild the bundle after a backend sync)." });
-    }
+    if (path === "/api/device/sync" && method === "POST") return handleSync();
 
     if (path === "/api/device/scan" && method === "POST") return startScan();
     if (path === "/api/device/scan/status") return J(scanState);
@@ -241,6 +239,40 @@
     const prst = PRST.applyEdits(base, editsFrom(body));
     const stem = (store.names.get(body.patch_slot) || `slot${body.patch_slot}`).replace(/\s+/g, "_");
     return new Response(prst, { status: 200, headers: { "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename="${stem}__edited.prst"` } });
+  }
+
+  // --- SnapTone/IR catalog sync (port of patch/read_bank_map.py) --------------
+  const nameAt = (blob, i, len) => { let s = ""; for (let j = i; j < i + len && j < blob.length; j++) { if (blob[j] === 0) break; s += String.fromCharCode(blob[j]); } return s.trim(); };
+  // SnapTone catalog (selector 0x24): names from offset 82, 16-byte records; keep
+  // user slots (>=50) that are named and not "Empty".
+  function parseCatalog(blob) {
+    const out = {};
+    for (let i = 82; i + 16 <= blob.length; i += 16) {
+      const idx = (i - 82) / 16, name = nameAt(blob, i, 16);
+      if (idx >= 50 && name && name !== "Empty") out[idx] = name;
+    }
+    return out;
+  }
+  // User IR bank (selector 0x20): names from offset 22, 16-byte records; keep real
+  // names (skip the generic "User IR N" defaults).
+  function parseIrBank(blob) {
+    const out = {};
+    for (let i = 22; i + 16 <= blob.length; i += 16) {
+      const idx = (i - 22) / 16, name = nameAt(blob, i, 16);
+      if (name && !name.toLowerCase().startsWith("user ir")) out[idx] = name;
+    }
+    return out;
+  }
+  async function handleSync() {
+    if (!(await ensureConnected())) return J({ ok: false, error: "no device connected" });
+    try {
+      const snaptone = parseCatalog(await Bridge.readBankBlob(0x24));
+      const ir = parseIrBank(await Bridge.readBankBlob(0x20));
+      store.bankMap = { source: "live device read (WebMIDI selectors 0x24 + 0x20)", snaptone, ir };
+      store.lib = PatchLib.make(store.ring, store.bankMap, store.profile); // refresh names
+      invalidate();
+      return J({ ok: true, count: Object.keys(snaptone).length, ir_count: Object.keys(ir).length, snaptones: snaptone, irs: ir });
+    } catch (e) { return J({ ok: false, error: e.message }); }
   }
 
   // --- device scan (rebuild the snapshot from the pedal over WebMIDI) ---------

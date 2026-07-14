@@ -154,6 +154,13 @@
     });
   }
 
+  // Read an arbitrary catalog selector (e.g. 0x24 SnapTone names, 0x20 User IR
+  // names) and return the longest reassembled blob. Same transport as readNames.
+  function readBankBlob(selector) {
+    assertReady();
+    return serialize(async () => (await exchange([0xf0, ...toWire(buildRequest(selector)), 0xf7])).blob);
+  }
+
   function selectSlot(slot) {
     assertReady();
     if (!(slot >= 0 && slot <= 99)) throw new Error(`slot ${slot} out of range 0..99`);
@@ -222,7 +229,7 @@
 
   root.WebMidiDevice = {
     connect, disconnect: () => { input = output = access = profile = namesCache = null; },
-    isConnected, device, readNames, selectSlot, readActivePrst, readSlotPrst, _sendStream,
+    isConnected, device, readNames, readBankBlob, selectSlot, readActivePrst, readSlotPrst, _sendStream,
     // exposed for tests / the probe
     _codec: { crc8, buildRequest, toWire, nibDecode, reassemble, splitNames, findPort },
   };

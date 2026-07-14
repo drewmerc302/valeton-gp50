@@ -85,6 +85,17 @@ Pick distinct enough layouts that the morning review is a real choice, not 3 ski
   confirm + per-target slot picker. No blind bulk device writes.
 - Never wedge the pedal (persistent port, paced). All device I/O via device_io.
 
+## Device testing (AUTHORIZED)
+User left the GP-50 connected overnight and OK'd a real device write to an empty
+slot to test the build-from-capture → write path end-to-end.
+- **Empty/default slots (name "GP-50"): 77–98.** Use **95** as the primary test
+  target, **96** as backup. Slot 99 = "US Lead" (prior test), leave it.
+- Verify by read-back after write (scan or read that slot), then confirm the built
+  patch = chosen template's chain with N->S pointed at the chosen SnapTone.
+- One write at a time, paced, persistent port (device_io). NEVER blind-sweep / wedge.
+- After testing, note which slot(s) were written in the morning summary so the user
+  can reclaim them.
+
 ## Execution notes
 - Branch `mvp-converter` only. Commit incrementally (Write msg to /tmp/msg.txt →
   `git commit -F`). Server: uvicorn app.main:app --port 8765 (restart on py change;

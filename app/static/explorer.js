@@ -54,7 +54,9 @@
   function matchesSearch(p) {
     const q = searchEl.value.trim().toLowerCase();
     if (!q) return true;
-    const hay = `${p.slot} ${p.name} ` + activeBlocks(p).map((b) => b.label).join(" ");
+    // search device labels AND real-hardware names (Fender, JCM800, TS808, …)
+    const hay = `${p.slot} ${p.name} ` +
+      p.blocks.map((b) => `${b.label} ${b.label_official || ""} ${b.official || ""}`).join(" ");
     return hay.toLowerCase().includes(q);
   }
 

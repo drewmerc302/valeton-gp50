@@ -143,9 +143,11 @@ def test_convert_e2e_real_conversion(page, live_server, tmp_path):
         f"expected WaveNet architecture, got {nam_json.get('architecture')!r}"
     )
 
-    # --- 6. device inspector: real inventory renders + clone lab present ----------
+    # --- 6. device inspector: registry renders from real inventory + build CTA ----
     page.goto(live_server + "/device")
-    page.wait_for_selector("#lib-list .lib-item")
-    assert "exported patches" in page.inner_text("#source-note")
-    assert page.query_selector("#clone-source")  # clone lab present
+    page.wait_for_selector(
+        "#st-grid .asset-card"
+    )  # SnapTone cards render (DeviceCore ran)
+    assert page.query_selector(".asset-card .usage-badge")  # usage badges present
+    assert page.query_selector("#build-btn")  # build-from-capture CTA present
     page.screenshot(path=str(SCREENSHOTS_DIR / "04-device.png"), full_page=True)

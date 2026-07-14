@@ -559,18 +559,19 @@ def test_repoint_engine_guards():
 
 
 def test_device_page_and_static_served():
-    html = client.get("/device").text
-    assert "parsed from exported patches" in html
-    for hook in (
-        'id="kind-snaptone"',
-        'id="kind-ir"',
-        'id="lib-list"',
-        'id="usage-list"',
-        'id="clone-source"',
-        'id="clone-go"',
+    # Variant A (default) + the two alternate layouts all serve and load the engine.
+    for route, marker in (
+        ("/device", 'id="st-grid"'),
+        ("/device-b", 'id="st-list"'),
+        ("/device-c", 'id="c-template"'),
     ):
-        assert hook in html, f"missing hook: {hook}"
-    assert "/api/device" in client.get("/static/device.js").text
+        html = client.get(route).text
+        assert marker in html, f"{route} missing {marker}"
+        assert "device_core.js" in html, f"{route} missing DeviceCore"
+        assert 'id="build-btn"' in html or 'id="c-go"' in html
+    # shared engine talks to the real API
+    assert "/api/device" in client.get("/static/device_core.js").text
+    assert "openBuildModal" in client.get("/static/device_core.js").text
 
 
 def test_nav_links_present_on_both_pages():

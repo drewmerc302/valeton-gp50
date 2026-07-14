@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GP-50 Device Inspector</title>
+  <title>GP-50 Device Inspector · Manager</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
@@ -28,8 +28,8 @@
     <p class="subtitle">Your loaded captures &amp; cabs — see what each one is used by, and build gig-ready patches from them.</p>
     <div class="variant-switch" style="margin-top:0.6rem">
       <span class="vs-label">Layout:</span>
-      <a href="/device" class="active">A · Registry</a>
-      <a href="/device-b">B · Manager</a>
+      <a href="/device">A · Registry</a>
+      <a href="/device-b" class="active">B · Manager</a>
       <a href="/device-c">C · Build</a>
     </div>
   </div>
@@ -43,44 +43,40 @@
     </div>
 
     <section class="card">
-      <div class="dc-section-head">
-        <h2>SnapTones</h2><span class="count" id="st-count"></span>
-        <span class="spacer"></span>
-        <span class="subtitle" style="font-size:0.78rem">your NAM captures</span>
+      <div class="dc-two-pane">
+        <div class="dc-rail">
+          <div class="dc-rail-group">
+            <div class="dc-section-head"><h2>SnapTones</h2><span class="count" id="st-count"></span></div>
+            <ul id="st-list" class="dc-rail-list"></ul>
+          </div>
+          <div class="dc-rail-group">
+            <div class="dc-section-head"><h2>User IRs</h2><span class="count" id="ir-count"></span></div>
+            <ul id="ir-list" class="dc-rail-list"></ul>
+          </div>
+          <div class="dc-rail-group">
+            <div class="dc-section-head"><h2>Factory cabs</h2><span class="count" id="cab-count"></span></div>
+            <ul id="cab-list" class="dc-rail-list"></ul>
+          </div>
+        </div>
+        <div class="dc-detail" id="detail">
+          <div class="dc-detail-empty" id="detail-empty">Select a capture or cab on the left to see what uses it.</div>
+        </div>
       </div>
-      <div id="st-grid" class="asset-grid"></div>
-      <p id="st-empty" class="subtitle" hidden>No SnapTones loaded. Sync from the device to read them.</p>
-    </section>
-
-    <section class="card">
-      <div class="dc-section-head">
-        <h2>User IRs</h2><span class="count" id="ir-count"></span>
-        <span class="spacer"></span>
-        <span class="subtitle" style="font-size:0.78rem">your uploaded cabs</span>
-      </div>
-      <div id="ir-grid" class="asset-grid"></div>
-      <p id="ir-empty" class="subtitle" hidden>No user IRs loaded.</p>
     </section>
 
     <section class="card">
       <div class="dc-section-head">
         <h2>Templates</h2><span class="count" id="tmpl-count"></span>
         <span class="spacer"></span>
-        <span class="subtitle" style="font-size:0.78rem">saved effects wrappers · create from a preset in Preset Explorer</span>
+        <span class="subtitle" style="font-size:0.78rem">create from a preset in Preset Explorer</span>
       </div>
       <ul id="tmpl-list" class="tmpl-list"></ul>
-      <p id="tmpl-empty" class="tmpl-empty" hidden>No templates yet. Open <a href="/explorer">Preset Explorer</a>, pick a preset you like, and choose <b>★ Create template from</b> to save its effects chain here.</p>
+      <p id="tmpl-empty" class="tmpl-empty" hidden>No templates yet. Open <a href="/explorer">Preset Explorer</a> and choose <b>★ Create template from</b> on a preset.</p>
     </section>
-
-    <details class="card" style="padding:0.8rem 1rem">
-      <summary style="cursor:pointer;font-weight:800;font-size:0.95rem">Factory cabs <span class="count" id="cab-count" style="color:var(--muted);font-weight:600"></span></summary>
-      <p class="subtitle" style="margin:0.4rem 0 0.6rem">Built-in cabinet models (also in the Preset Explorer block picker). Shown for reference.</p>
-      <div id="cab-grid" class="asset-grid"></div>
-    </details>
   </main>
 
   <script src="/static/theme.js"></script>
   <script src="/static/device_core.js"></script>
-  <script src="/static/device_a.js"></script>
+  <script src="/static/device_b.js"></script>
 </body>
 </html>

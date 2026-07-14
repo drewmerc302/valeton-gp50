@@ -13,33 +13,15 @@ source body is stored base64. No device I/O here.
 from __future__ import annotations
 
 import base64
-import json
 import os
-import threading
 import uuid
 
 from app import patchlib
+from app.jsonstore import JsonStore
 from patch import prst_format
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LIB_PATH = os.path.join(PROJECT_ROOT, "templates.json")
-
-_lock = threading.Lock()
-
-
-def _read() -> list:
-    if not os.path.exists(LIB_PATH):
-        return []
-    try:
-        return json.load(open(LIB_PATH))
-    except (json.JSONDecodeError, OSError):
-        return []
-
-
-def _write(entries: list) -> None:
-    tmp = LIB_PATH + ".tmp"
-    json.dump(entries, open(tmp, "w"), indent=2)
-    os.replace(tmp, LIB_PATH)
+_store = JsonStore(os.path.join(PROJECT_ROOT, "templates.json"))
 
 
 def _summary_of(patch: dict) -> dict:
@@ -68,11 +50,11 @@ def _public(entry: dict) -> dict:
 
 
 def list_entries() -> list:
-    return [_public(e) for e in _read()]
+    return [_public(e) for e in _store.read()]
 
 
 def get_entry(entry_id: str) -> dict | None:
-    return next((e for e in _read() if e.get("id") == entry_id), None)
+    return next((e for e in _store.read() if e.get("id") == entry_id), None)
 
 
 def add_from_patch(name: str, source_slot: int) -> dict:
@@ -90,18 +72,16 @@ def add_from_patch(name: str, source_slot: int) -> dict:
             f"patch {source_slot} is not a {prst_format.PRST_LEN}-byte .prst"
         )
     patch = next((p for p in patchlib.all_patches() if p["slot"] == source_slot), None)
-    entry = {
-        "id": uuid.uuid4().hex[:12],
-        "name": name.strip(),
-        "source_slot": source_slot,
-        "source_name": (patch or {}).get("name", ""),
-        "summary": _summary_of(patch or {}),
-        "body_b64": base64.b64encode(body).decode("ascii"),
-    }
-    with _lock:
-        entries = _read()
-        entries.append(entry)
-        _write(entries)
+    entry = _store.append(
+        {
+            "id": uuid.uuid4().hex[:12],
+            "name": name.strip(),
+            "source_slot": source_slot,
+            "source_name": (patch or {}).get("name", ""),
+            "summary": _summary_of(patch or {}),
+            "body_b64": base64.b64encode(body).decode("ascii"),
+        }
+    )
     return _public(entry)
 
 
@@ -111,10 +91,4 @@ def body_of(entry_id: str) -> bytes | None:
 
 
 def delete_entry(entry_id: str) -> bool:
-    with _lock:
-        entries = _read()
-        kept = [e for e in entries if e.get("id") != entry_id]
-        if len(kept) == len(entries):
-            return False
-        _write(kept)
-    return True
+    return _store.delete(entry_id)

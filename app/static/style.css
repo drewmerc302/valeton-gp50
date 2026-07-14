@@ -492,6 +492,12 @@ button:disabled {
   text-align: center;
 }
 .modal-msg { margin: 0 0 1.3rem; font-size: 0.98rem; line-height: 1.5; }
+.modal-input {
+  font: inherit; font-size: 0.95rem; width: 100%; box-sizing: border-box;
+  padding: 0.5rem 0.6rem; margin: 0 0 1.1rem; text-align: left;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text);
+}
+.modal-input:focus { outline: none; border-color: var(--accent); }
 .modal-actions { display: flex; justify-content: center; gap: 0.6rem; }
 .modal-btn {
   font: inherit; font-size: 0.9rem; font-weight: 700; cursor: pointer;

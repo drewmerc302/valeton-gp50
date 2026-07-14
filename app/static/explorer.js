@@ -726,6 +726,13 @@
       if (!Number.isNaN(other)) swapPreset(p, other);
     });
     row.appendChild(sw);
+
+    const tmpl = document.createElement("button");
+    tmpl.type = "button"; tmpl.className = "slot-act";
+    tmpl.textContent = "★ Create template from";
+    tmpl.title = "Save this preset's effects chain as a reusable template (build patches from it in Device Inspector)";
+    tmpl.addEventListener("click", stop(() => createTemplateFrom(p)));
+    row.appendChild(tmpl);
     return row;
   }
 
@@ -928,6 +935,65 @@
       overlay.addEventListener("click", onBackdrop);
       document.addEventListener("keydown", onKey);
     });
+  }
+
+  // Text-input variant of the confirm modal (for naming a template).
+  function promptDialog(message, defaultValue = "", okLabel = "Save") {
+    return new Promise((resolve) => {
+      const overlay = $("confirm-modal");
+      const ok = $("confirm-ok");
+      const cancel = $("confirm-cancel");
+      const card = overlay.querySelector(".modal-card");
+      $("confirm-msg").textContent = message;
+      ok.textContent = okLabel;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "modal-input";
+      input.value = defaultValue;
+      card.insertBefore(input, card.querySelector(".modal-actions"));
+      overlay.hidden = false;
+      input.focus();
+      input.select();
+      function cleanup(result) {
+        overlay.hidden = true;
+        input.remove();
+        ok.removeEventListener("click", onOk);
+        cancel.removeEventListener("click", onCancel);
+        overlay.removeEventListener("click", onBackdrop);
+        document.removeEventListener("keydown", onKey);
+        resolve(result);
+      }
+      const onOk = () => cleanup(input.value.trim() || null);
+      const onCancel = () => cleanup(null);
+      const onBackdrop = (e) => { if (e.target === overlay) cleanup(null); };
+      const onKey = (e) => {
+        if (e.key === "Enter") { e.preventDefault(); cleanup(input.value.trim() || null); }
+        else if (e.key === "Escape") { e.preventDefault(); cleanup(null); }
+      };
+      ok.addEventListener("click", onOk);
+      cancel.addEventListener("click", onCancel);
+      overlay.addEventListener("click", onBackdrop);
+      document.addEventListener("keydown", onKey);
+    });
+  }
+
+  async function createTemplateFrom(p) {
+    const name = await promptDialog(
+      `Save preset #${p.slot} "${p.name}" as a reusable template. Name it (e.g. "Metal", "80s Clean"):`,
+      "", "Create template");
+    if (!name) return;
+    try {
+      const r = await fetch("/api/device/templates/from-patch", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, source_slot: p.slot }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.detail || `HTTP ${r.status}`);
+      const note = listEl.querySelector(`.save-bar[data-slot="${p.slot}"] .save-note`);
+      if (note) { note.textContent = `★ Saved template "${name}" — use it in Device Inspector.`; }
+    } catch (e) {
+      alert(`Could not save template: ${e.message}`);
+    }
   }
 
   // --- scan all presets from the device (one at a time; no bulk read exists) -----

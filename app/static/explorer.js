@@ -158,15 +158,17 @@
     const c = document.createElement("button");
     c.type = "button";
     c.className = `chip blk-${b.block.replace(/[^a-z]/gi, "").toLowerCase()}`;
+    if (!b.active) c.classList.add("bypassed-chip"); // dim bypassed blocks in the chain
     const useOfficial = officialOn() && b.official;
     c.textContent = useOfficial ? b.label_official : b.label;
     if (useOfficial) c.classList.add("official");
     c.title = b.official
       ? `Device: ${b.label}\nOfficial: ${b.label_official}`
       : "Filter by this block · type · model";
-    c.addEventListener("click", () =>
-      addFilter({ block: b.block, type: b.type, model: b.model })
-    );
+    c.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      addFilter({ block: b.block, type: b.type, model: b.model });
+    });
     return c;
   }
 
@@ -446,14 +448,20 @@
 
       const head = document.createElement("div");
       head.className = "block-detail-head";
-      // clickable model chip -> opens the model/library picker
+      // plain "BLOCK · Type" label + a separate lighter model dropdown chip
+      const bd_ = blockDisplay(b.block);
+      const labelText = b.type && b.type !== bd_ ? `${bd_} · ${b.type}` : bd_;
+      const modelText = officialOn() && b.official ? b.official : b.model || "—";
+      const lbl = document.createElement("span");
+      lbl.className = "block-label";
+      lbl.textContent = labelText;
+      head.appendChild(lbl);
       const pkey = `${p.slot}:${blkIdx}`;
       const chipBtn = document.createElement("button");
       chipBtn.type = "button";
       chipBtn.className =
-        `chip blk-${b.block.replace(/[^a-z]/gi, "").toLowerCase()} model-chip` +
-        (e.override[blkIdx] ? " changed" : "") + (pickerKey === pkey ? " open" : "");
-      chipBtn.innerHTML = `${blockLabel(b)} <span class="chip-caret">▾</span>`;
+        "model-chip" + (e.override[blkIdx] ? " changed" : "") + (pickerKey === pkey ? " open" : "");
+      chipBtn.innerHTML = `${modelText} <span class="chip-caret">▾</span>`;
       chipBtn.title = "Change model / apply a library block";
       chipBtn.addEventListener("click", () => {
         pickerKey = pickerKey === pkey ? null : pkey;
@@ -715,23 +723,30 @@
       const head = document.createElement("div");
       head.className = "preset-head";
       head.innerHTML =
-        `<span class="caret">${isOpen ? "▾" : "▸"}</span>` +
         `<span class="preset-num">#${p.slot}</span> <span class="preset-name">${p.name}</span>` +
         (p.uses_snaptone ? ' <span class="badge st">SnapTone</span>' : "");
+      // full block chain, right-aligned, bypassed blocks dimmed (matches the Designer)
+      const chips = document.createElement("div");
+      chips.className = "chip-row";
+      const chain = p.blocks.filter((b) => b.model);
+      chain.forEach((b) => chips.appendChild(chip(b)));
+      if (!chain.length)
+        chips.innerHTML = '<span class="subtitle">empty preset</span>';
+      head.appendChild(chips);
+      const caret = document.createElement("span");
+      caret.className = "caret";
+      caret.textContent = isOpen ? "▾" : "▸";
+      head.appendChild(caret);
       head.addEventListener("click", () => {
         if (expanded.has(p.slot)) expanded.delete(p.slot);
         else expanded.add(p.slot);
         renderPresets();
       });
-      const chips = document.createElement("div");
-      chips.className = "chip-row";
-      activeBlocks(p).forEach((b) => chips.appendChild(chip(b)));
-      if (!activeBlocks(p).length)
-        chips.innerHTML = '<span class="subtitle">empty preset</span>';
       li.appendChild(head);
-      li.appendChild(chips);
-      li.appendChild(slotActions(p));
-      if (isOpen) li.appendChild(renderDetail(p));
+      if (isOpen) {
+        li.appendChild(renderDetail(p));
+        li.appendChild(slotActions(p));
+      }
       listEl.appendChild(li);
     });
   }

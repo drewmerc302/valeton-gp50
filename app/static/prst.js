@@ -115,6 +115,12 @@
   }
   const bypassOffset = (b) => { const i = indexOf(b, REC_BYPASS); return i >= 0 ? i + 4 : -1; };
   const paramsOffset = (b) => { const i = indexOf(b, REC_PARAMS); return i >= 0 ? i + 4 : -1; };
+  function bypassMask(b) { const o = bypassOffset(b); return o >= 0 ? dv(b).getUint32(o, true) : 0; }
+  function paramFloats(b) {
+    const o = paramsOffset(b), d = dv(b), out = [];
+    for (let i = 0; i < N_PARAM_SLOTS; i++) out.push(o < 0 ? 0 : d.getFloat32(o + i * 4, true));
+    return out;
+  }
   function fsOffset(b) {
     for (const magic of [FS_TRAILER, FS_TRAILER_GP5]) { const i = lastIndexOf(b, magic); if (i >= 0) return i + 4; }
     return -1;
@@ -294,7 +300,7 @@
     NAME_OFF, BODY_OFF, NAME_LEN, CRC_OFF, SETTINGS_OFF, N_BLOCKS, N_PARAM_SLOTS,
     GP50, GP5, DEVICES, profileFor, bodyLen,
     crc8, refixCrc, detect, readName, writeName, rebuild,
-    modelsOffset, modelRecords, bypassOffset, paramsOffset, fsOffset, findTLV,
+    modelsOffset, modelRecords, bypassOffset, paramsOffset, bypassMask, paramFloats, fsOffset, findTLV,
     readVolBpm, readFootswitches, checkConvertible, convert, applyEdits,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;

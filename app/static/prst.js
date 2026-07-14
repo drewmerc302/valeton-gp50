@@ -215,12 +215,87 @@
     return out;
   }
 
+  // Apply an edit spec to a .prst, returning a NEW edited .prst (input untouched).
+  // Verbatim port of patchlib.apply_edits_bytes; edits = {params, bypass, settings,
+  // footswitches, models} as built by the Explorer editor.
+  function applyEdits(prst, edits) {
+    const b = Uint8Array.from(prst);
+    const d = dv(b);
+    edits = edits || {};
+
+    // 0. block model changes: 4 bytes [b0][b1][b2][cat], fxid = (cat<<24)|low
+    const mb = modelsOffset(b);
+    if (mb >= 0) {
+      for (const [blk, fxid] of Object.entries(edits.models || {})) {
+        const rec = mb + Number(blk) * 4, f = Number(fxid) >>> 0;
+        b[rec] = f & 0xff; b[rec + 1] = (f >> 8) & 0xff; b[rec + 2] = (f >> 16) & 0xff; b[rec + 3] = (f >> 24) & 0xff;
+      }
+    }
+
+    // 1. parameter floats (10 blocks x 8 slots)
+    const fi = paramsOffset(b);
+    const params = edits.params || {};
+    if (fi < 0 && Object.keys(params).length) throw new Error("no parameter array in patch");
+    for (const [blk, ps] of Object.entries(params)) {
+      for (const [alg, value] of Object.entries(ps)) {
+        const slot = Number(blk) * 8 + Number(alg);
+        if (slot >= 0 && slot < N_PARAM_SLOTS) d.setFloat32(fi + slot * 4, Number(value), true);
+      }
+    }
+
+    // 2. bypass bitmask
+    const mi = bypassOffset(b);
+    if (mi >= 0 && edits.bypass && Object.keys(edits.bypass).length) {
+      let mask = d.getUint32(mi, true);
+      for (const [blk, on] of Object.entries(edits.bypass)) {
+        const bit = 1 << Number(blk);
+        mask = on ? (mask | bit) : (mask & ~bit);
+      }
+      d.setUint32(mi, mask >>> 0, true);
+    }
+
+    // 3. patch settings (group 0x20: id1 VOL, id2 BPM)
+    const s = edits.settings || {};
+    if (Object.keys(s).length) {
+      let i = SETTINGS_OFF;
+      while (i + 4 <= b.length && b[i + 1] === 0x20) {
+        const rid = b[i], ln = d.getUint16(i + 2, true);
+        if (![1, 2, 4].includes(ln)) break;
+        if (rid === 0x01 && s.patch_vol !== undefined) {
+          let vol = Math.max(0, Math.min(100, Math.trunc(Number(s.patch_vol))));
+          for (let k = 0; k < ln; k++) { b[i + 4 + k] = vol & 0xff; vol = Math.floor(vol / 256); }
+        } else if (rid === 0x02 && s.bpm !== undefined && ln === 4) {
+          d.setInt32(i + 4, Math.trunc(Number(s.bpm)), true);
+        }
+        i += 4 + ln;
+      }
+    }
+
+    // 4. footswitch masks (fs1 at +0, fs2 at +4, <=2 blocks each)
+    const fs = edits.footswitches || {};
+    if (Object.keys(fs).length) {
+      const off = fsOffset(b);
+      if (off >= 0) {
+        for (const [key, so] of [["fs1", 0], ["fs2", 4]]) {
+          if (fs[key]) {
+            let mask = 0;
+            fs[key].slice(0, 2).forEach((bi) => { mask |= 1 << Number(bi); });
+            d.setUint32(off + so, mask >>> 0, true);
+          }
+        }
+      }
+    }
+
+    refixCrc(b);
+    return b;
+  }
+
   const API = {
     NAME_OFF, BODY_OFF, NAME_LEN, CRC_OFF, SETTINGS_OFF, N_BLOCKS, N_PARAM_SLOTS,
     GP50, GP5, DEVICES, profileFor, bodyLen,
     crc8, refixCrc, detect, readName, writeName, rebuild,
     modelsOffset, modelRecords, bypassOffset, paramsOffset, fsOffset, findTLV,
-    readVolBpm, readFootswitches, checkConvertible, convert,
+    readVolBpm, readFootswitches, checkConvertible, convert, applyEdits,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   else root.PRST = API;

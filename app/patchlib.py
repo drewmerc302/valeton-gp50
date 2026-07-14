@@ -551,21 +551,20 @@ def repoint_snaptone_body(
     return bytes(b)
 
 
-def apply_edits(patch_slot: int, edits: dict) -> tuple[str, bytes]:
-    """Produce an edited .prst (for Suite re-import — never a device write) with
-    changed parameter values, block bypass states, and patch VOL/BPM. CRC refixed.
+def apply_edits_bytes(b: bytearray, edits: dict) -> None:
+    """Apply an edit spec to a .prst in place (all offsets found by magic, so this
+    works on either device) and refix the CRC. The pure transform behind
+    apply_edits — ported verbatim to app/static/prst.js (applyEdits) and checked
+    byte-for-byte (app/tests/test_edits_js.mjs).
 
     edits = {
-      "params":   {block_index: {algId: value}},   # float param values
-      "bypass":   {block_index: bool},              # block on/off
-      "settings": {"patch_vol": int, "bpm": int},
+      "params":       {block_index: {algId: value}},   # float param values
+      "bypass":       {block_index: bool},              # block on/off
+      "settings":     {"patch_vol": int, "bpm": int},
+      "footswitches": {"fs1": [block, ...], "fs2": [...]},
+      "models":       {block_index: fxid},
     }
     """
-    src = patch_file(patch_slot)
-    if src is None:
-        raise ValueError(f"unknown patch slot {patch_slot}")
-    b = bytearray(open(src, "rb").read())
-
     # 0. block MODEL changes: each block k's model = 4 bytes
     #    [fxlow b0][b1][b2][category]. fxid = (category<<24)|fxlow.
     mb = fmt.models_offset(b)
@@ -628,5 +627,15 @@ def apply_edits(patch_slot: int, edits: dict) -> tuple[str, bytes]:
                     struct.pack_into("<I", b, off + slot_off, mask)
 
     fmt.refix_crc(b)
+
+
+def apply_edits(patch_slot: int, edits: dict) -> tuple[str, bytes]:
+    """Produce an edited .prst (name, bytes) for the given slot. Thin wrapper over
+    apply_edits_bytes that loads the slot's base .prst from disk."""
+    src = patch_file(patch_slot)
+    if src is None:
+        raise ValueError(f"unknown patch slot {patch_slot}")
+    b = bytearray(open(src, "rb").read())
+    apply_edits_bytes(b, edits)
     stem = os.path.basename(src).replace(".prst", "")
     return f"{stem}__edited.prst", bytes(b)

@@ -23,8 +23,8 @@
   // once the user has interacted, status checks may connect WebMIDI (needs a
   // gesture); before that, don't auto-prompt on page load.
   let userEngaged = false;
-  root.addEventListener("pointerdown", () => { userEngaged = true; }, { capture: true });
-  root.addEventListener("keydown", () => { userEngaged = true; }, { capture: true });
+  const engage = () => { userEngaged = true; };
+  for (const ev of ["pointerdown", "keydown", "click"]) root.addEventListener(ev, engage, { capture: true });
 
   const J = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
   const b64ToBytes = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));

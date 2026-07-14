@@ -785,11 +785,21 @@ button:disabled {
   width: 100%;
   margin: 0.25rem 0 0;
 }
-/* toggle param = blue iOS-style pill switch, inline to the right of the name */
+/* toggle param = label + pill switch grouped as ONE chip, so it's unambiguous
+   which switch controls which option (was: switch pinned to the far edge of a
+   150px cell, landing next to the NEXT param's label). */
 .param.editable.toggle {
-  flex-direction: row; align-items: center; justify-content: space-between; gap: 0.5rem;
+  flex-direction: row; align-items: center; justify-content: flex-start; gap: 0.45rem;
+  width: auto;                       /* hug content, not the 150px slider width */
+  align-self: center;                /* natural height, don't stretch to the slider cell */
+  background: var(--chip);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.22rem 0.35rem 0.22rem 0.7rem;
 }
-.param.editable.toggle > .pname { float: none; }
+.param.editable.toggle > .pname {
+  float: none; color: var(--text); font-size: 0.75rem; overflow: visible;
+}
 .param.toggle .pval { display: none; }
 .pswitch {
   position: relative; width: 36px; height: 20px; flex: none;

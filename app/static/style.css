@@ -702,12 +702,20 @@ button:disabled {
   width: 100%;
   margin: 0.25rem 0 0;
 }
-.param.editable input[type="checkbox"] {
-  clear: both;
-  align-self: flex-start;
-  accent-color: var(--slider);
-  margin-top: 0.15rem;
+/* toggle param = blue iOS-style pill switch (state is shown by the switch) */
+.param.toggle .pval { display: none; }
+.pswitch {
+  clear: both; position: relative; width: 36px; height: 20px; margin-top: 0.3rem;
+  border: none; border-radius: 999px; padding: 0; cursor: pointer;
+  background: var(--track); transition: background 0.15s;
 }
+.pswitch::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: left 0.15s;
+}
+.pswitch.on { background: var(--slider); }
+.pswitch.on::after { left: 18px; }
 
 /* blue slider with a white/blue-ringed thumb, matching the Valeton editor */
 input[type="range"] {
@@ -716,18 +724,20 @@ input[type="range"] {
 }
 input[type="range"]::-webkit-slider-runnable-track {
   height: 6px; border-radius: 999px;
-  background: linear-gradient(var(--slider), var(--slider)) 0 / var(--fill, 0%) 100% no-repeat var(--track);
+  background:
+    linear-gradient(var(--slider, #2a6fdb), var(--slider, #2a6fdb)) 0 / var(--fill, 0%) 100% no-repeat,
+    var(--track);
 }
 input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background: var(--track); }
-input[type="range"]::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--slider); }
+input[type="range"]::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--slider, #2a6fdb); }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
-  background: #fff; border: 2.5px solid var(--slider); margin-top: -5px;
+  background: #fff; border: 2.5px solid var(--slider, #2a6fdb); margin-top: -5px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 input[type="range"]::-moz-range-thumb {
   width: 12px; height: 12px; border-radius: 50%;
-  background: #fff; border: 2.5px solid var(--slider); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  background: #fff; border: 2.5px solid var(--slider, #2a6fdb); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 /* on/off = iOS-style switch (text hidden, knob slides) */

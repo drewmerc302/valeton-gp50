@@ -510,16 +510,26 @@
           const out = document.createElement("span");
           out.className = "pval";
           out.textContent = fmtParam(pr, value);
-          const inp = document.createElement("input");
+          cell.innerHTML = `<span class="pname">${pr.name}</span>`;
+          cell.appendChild(out);
           if (pr.toggle) {
-            inp.type = "checkbox"; inp.checked = Math.round(value) !== 0;
-            inp.addEventListener("change", () => {
-              const v = inp.checked ? 1 : 0;
+            // blue iOS-style pill switch (no checkbox, no "Off" text control)
+            const sw = document.createElement("button");
+            sw.type = "button";
+            sw.className = "pswitch" + (Math.round(value) !== 0 ? " on" : "");
+            sw.setAttribute("role", "switch");
+            sw.setAttribute("aria-checked", Math.round(value) !== 0);
+            sw.addEventListener("click", () => {
+              const v = sw.classList.contains("on") ? 0 : 1;
               (e.params[blkIdx] ||= {})[pr.algId] = v;
+              sw.classList.toggle("on", v === 1);
+              sw.setAttribute("aria-checked", v === 1);
               out.textContent = fmtParam(pr, v);
               refreshSaveBar(p);
             });
+            cell.appendChild(sw);
           } else {
+            const inp = document.createElement("input");
             inp.type = "range"; inp.min = pr.min; inp.max = pr.max; inp.step = pr.step; inp.value = value;
             inp.addEventListener("input", () => {
               const v = Number(inp.value);
@@ -527,10 +537,8 @@
               out.textContent = fmtParam(pr, v);
               refreshSaveBar(p);
             });
+            cell.appendChild(inp);
           }
-          cell.innerHTML = `<span class="pname">${pr.name}</span>`;
-          cell.appendChild(out);
-          cell.appendChild(inp);
           grid.appendChild(cell);
         });
         bd.appendChild(grid);

@@ -20,12 +20,13 @@ INPUT may be a single .nam or a directory (all *.nam inside are converted).
 
 import argparse
 import json
-import re
 import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+import distill_protocol  # sibling module: the engine <-> train stdout contract
 
 HERE = Path(__file__).resolve().parent
 PROJECT = HERE.parent
@@ -116,12 +117,10 @@ def convert_one(src, args, py_a2, py_a1):
 
     final = Path(args.outdir) / f"{name}.nam"
     shutil.copyfile(a1, final)
-    m_esr = re.search(r"DISTILL_ESR:\s*([0-9.eE+-]+)", out)
-    m_fmt = re.search(r"FORMAT:\s*(.+)", out)
     result.update(
         out=str(final),
-        esr=float(m_esr.group(1)) if m_esr else None,
-        fmt=m_fmt.group(1).strip() if m_fmt else None,
+        esr=distill_protocol.parse_esr(out),
+        fmt=distill_protocol.parse_format(out),
     )
     if not args.keep_intermediate:
         for f in (y,):

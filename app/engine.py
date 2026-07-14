@@ -22,7 +22,6 @@ training venvs and touches the filesystem.
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import subprocess
 import tempfile
@@ -30,15 +29,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
+from a2a1 import distill_protocol
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 A2A1_DIR = PROJECT_ROOT / "a2a1"
 DEFAULT_VENV_A2 = PROJECT_ROOT / ".venv" / "bin" / "python"
 DEFAULT_VENV_A1 = PROJECT_ROOT / ".venv-a1" / "bin" / "python"
 DEFAULT_DI = PROJECT_ROOT / "refs" / "v3_0_0.wav"
 DEFAULT_OUT_DIR = PROJECT_ROOT / "out"
-
-_ESR_RE = re.compile(r"DISTILL_ESR:\s*([0-9.eE+-]+)")
-_FORMAT_RE = re.compile(r"FORMAT:\s*(.+)")
 
 
 @dataclass
@@ -99,12 +97,6 @@ def _update(state: FileState, progress_cb: ProgressCallback, **changes) -> None:
     for k, v in changes.items():
         setattr(state, k, v)
     progress_cb(state)
-
-
-def _format_ok(fmt_text: Optional[str]) -> Optional[bool]:
-    if not fmt_text:
-        return None
-    return "OK" in fmt_text and "UNEXPECTED" not in fmt_text
 
 
 def _convert_one(
@@ -227,10 +219,7 @@ def _convert_one(
             return
 
         combined = train_result.stdout + "\n" + train_result.stderr
-        m_esr = _ESR_RE.search(combined)
-        m_fmt = _FORMAT_RE.search(combined)
-        esr_val = float(m_esr.group(1)) if m_esr else None
-        fmt_text = m_fmt.group(1).strip() if m_fmt else None
+        fmt_text = distill_protocol.parse_format(combined)
 
         _update(
             state,
@@ -238,8 +227,8 @@ def _convert_one(
             status="done",
             progress=1.0,
             output_path=str(dest),
-            esr=esr_val,
-            format_ok=_format_ok(fmt_text),
+            esr=distill_protocol.parse_esr(combined),
+            format_ok=distill_protocol.format_ok(fmt_text),
         )
 
 

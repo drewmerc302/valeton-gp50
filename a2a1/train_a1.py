@@ -20,6 +20,8 @@ import json
 import shutil
 from pathlib import Path
 
+import distill_protocol  # sibling module: the engine <-> train stdout contract
+
 import numpy as np
 import soundfile as sf
 import torch
@@ -172,8 +174,8 @@ def main():
 
     final = outdir / "a1.nam"
     shutil.copyfile(exported, final)
-    print(f"FORMAT: {validate_format(final)}")
-    print(f"DISTILL_ESR: {e:.6f}")
+    distill_protocol.emit_format(validate_format(final))
+    distill_protocol.emit_esr(float(e))
     print(f"A1_NAM: {final}")
 
 

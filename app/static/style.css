@@ -1058,7 +1058,7 @@ input[type="range"]::-moz-range-thumb {
 
 /* asset cards: SnapTones + user IRs */
 .asset-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(265px, 1fr));
   gap: 0.7rem;
 }
 .asset-card {
@@ -1081,12 +1081,14 @@ input[type="range"]::-moz-range-thumb {
 .usage-badge {
   font-size: 0.72rem; font-weight: 700; border-radius: 999px; padding: 0.15rem 0.55rem;
   background: color-mix(in srgb, var(--slider) 15%, transparent); color: var(--slider);
+  white-space: nowrap; flex-shrink: 0;
 }
 .usage-badge.unused { background: var(--chip); color: var(--muted); }
 .asset-card .ac-list,
 .asset-card .ac-build {
   font: inherit; font-size: 0.76rem; font-weight: 700; cursor: pointer;
   border-radius: 7px; padding: 0.25rem 0.6rem; background: transparent;
+  white-space: nowrap; flex-shrink: 0;
 }
 .asset-card .ac-list { margin-left: auto; border: 1px solid var(--border); color: var(--muted); }
 .asset-card .ac-list:hover { border-color: var(--muted); color: var(--text); }

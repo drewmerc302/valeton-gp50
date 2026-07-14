@@ -547,6 +547,36 @@ def clone_with_snaptone(patch_slot: int, target_ns_slot: int) -> tuple[str, byte
     return f"{stem}__{safe}.prst", bytes(b)
 
 
+NAME_OFF = 0x19  # 16-byte patch name region prst[0x19:0x29], latin1, null-padded
+
+
+def set_patch_name(b: bytearray, name: str) -> None:
+    """Overwrite the 16-byte patch-name region in place (does NOT refix the CRC)."""
+    b[NAME_OFF : NAME_OFF + 16] = name.encode("latin1", "replace")[:16].ljust(16, b"\0")
+
+
+def repoint_snaptone_body(
+    prst: bytes, target_ns_slot: int, name: Optional[str] = None
+) -> bytes:
+    """Return a full .prst with its N->S (SnapTone) block repointed at
+    `target_ns_slot`, optionally renamed, CRC refixed. Works on any 552-byte body
+    (a live patch OR a stored template) — this is the shared build engine. Raises
+    if the body has no N->S block or the slot is out of range."""
+    if len(prst) != 552:
+        raise ValueError(f"expected a 552-byte .prst, got {len(prst)}")
+    if not (0 <= target_ns_slot <= 79):
+        raise ValueError(f"SnapTone slot out of range: {target_ns_slot}")
+    b = bytearray(prst)
+    off = _model_rec_offset(b, NS_CAT)
+    if off is None:
+        raise ValueError("patch has no N->S (SnapTone) block to repoint")
+    b[off] = target_ns_slot
+    if name is not None:
+        set_patch_name(b, name)
+    b[CRC_OFF] = _crc8(b[CRC_OFF + 1 :])
+    return bytes(b)
+
+
 def apply_edits(patch_slot: int, edits: dict) -> tuple[str, bytes]:
     """Produce an edited .prst (for Suite re-import — never a device write) with
     changed parameter values, block bypass states, and patch VOL/BPM. CRC refixed.

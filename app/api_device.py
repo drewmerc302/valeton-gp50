@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from app import blocklib, device_io, patchlib
+from app import blocklib, device_io, patchlib, templates_store
 
 router = APIRouter(prefix="/api/device")
 
@@ -163,6 +163,75 @@ def blocklib_add(entry: BlockLibEntry) -> dict:
 @router.delete("/blocklib/{entry_id}")
 def blocklib_delete(entry_id: str) -> dict:
     return {"deleted": blocklib.delete_entry(entry_id)}
+
+
+# --- patch templates: save a whole effects chain, build a patch from a capture ---
+
+
+class TemplateFromPatch(BaseModel):
+    name: str
+    source_slot: int
+
+
+@router.get("/templates")
+def templates_list() -> dict:
+    return {"templates": templates_store.list_entries()}
+
+
+@router.post("/templates/from-patch")
+def templates_from_patch(req: TemplateFromPatch) -> dict:
+    """Save device patch `source_slot`'s full effects chain as a named template."""
+    try:
+        return templates_store.add_from_patch(req.name, req.source_slot)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.delete("/templates/{template_id}")
+def templates_delete(template_id: str) -> dict:
+    return {"deleted": templates_store.delete_entry(template_id)}
+
+
+class BuildRequest(BaseModel):
+    template_id: str
+    snaptone_slot: int
+    target_slot: int | None = None  # required when writing to the device
+    name: str | None = None  # patch name; defaults to the SnapTone's name
+    confirm: bool = False  # required for a device write
+    download: bool = False  # true -> return the .prst instead of writing
+
+
+@router.post("/build", response_model=None)
+def build(req: BuildRequest) -> Response | dict:
+    """Build a patch from a template + a SnapTone: stamp the template's effects
+    chain onto the chosen capture (repoint N->S, refix CRC). With download=true,
+    return the .prst. Otherwise write it to target_slot on the pedal (confirm=true)."""
+    body = templates_store.body_of(req.template_id)
+    if body is None:
+        raise HTTPException(404, f"unknown template {req.template_id!r}")
+    st = patchlib.find_snaptone(req.snaptone_slot)
+    name = req.name or (st or {}).get("name") or f"NS{req.snaptone_slot}"
+    try:
+        prst = patchlib.repoint_snaptone_body(body, req.snaptone_slot, name=name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    if req.download:
+        safe = "".join(c for c in name if c.isalnum()) or "patch"
+        return Response(
+            prst,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{safe}.prst"'},
+        )
+
+    if not req.confirm:
+        raise HTTPException(400, "refusing to write: confirm=true required")
+    if req.target_slot is None or not 0 <= req.target_slot <= 99:
+        raise HTTPException(400, "target_slot 0..99 required to write to the device")
+    result = device_io.write_patch(prst, req.target_slot)
+    if result.get("ok"):
+        patchlib.reload()
+    return result
 
 
 class WriteRequest(EditRequest):

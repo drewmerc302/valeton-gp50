@@ -473,6 +473,91 @@ def test_clone_bad_input_400():
     )
 
 
+def _a_snaptone_patch():
+    """A device patch that uses a SnapTone (has an N->S block to repoint)."""
+    inv = client.get("/api/device/inventory").json()
+    p = next(p for p in inv["patches"] if p["uses_snaptone"])
+    other = next(s["slot"] for s in inv["snaptones"] if s["slot"] != p["snaptone_slot"])
+    return p, other
+
+
+def test_template_from_patch_then_build_download():
+    from app import patchlib
+
+    p, other_st = _a_snaptone_patch()
+    tmpl = client.post(
+        "/api/device/templates/from-patch",
+        json={"name": "Test Overnight", "source_slot": p["slot"]},
+    ).json()
+    assert tmpl["id"] and tmpl["summary"]["uses_snaptone"] is True
+    assert "body_b64" not in tmpl  # heavy body stripped from responses
+    try:
+        # build onto a DIFFERENT SnapTone, download the .prst (no device write)
+        r = client.post(
+            "/api/device/build",
+            json={
+                "template_id": tmpl["id"],
+                "snaptone_slot": other_st,
+                "download": True,
+            },
+        )
+        assert r.status_code == 200
+        prst = r.content
+        assert len(prst) == 552
+        off = patchlib._model_rec_offset(bytearray(prst), patchlib.NS_CAT)
+        assert prst[off] == other_st  # N->S repointed to the chosen capture
+        assert prst[patchlib.CRC_OFF] == patchlib._crc8(prst[patchlib.CRC_OFF + 1 :])
+        # named after the target SnapTone
+        st_name = next(
+            s["name"]
+            for s in client.get("/api/device/inventory").json()["snaptones"]
+            if s["slot"] == other_st
+        )
+        assert prst[0x19:0x29].split(b"\0")[0].decode("latin1") == st_name[:16]
+    finally:
+        client.delete(f"/api/device/templates/{tmpl['id']}")
+
+
+def test_build_write_requires_confirm():
+    p, other_st = _a_snaptone_patch()
+    tmpl = client.post(
+        "/api/device/templates/from-patch",
+        json={"name": "Test Confirm", "source_slot": p["slot"]},
+    ).json()
+    try:
+        # no download + no confirm -> refused, device untouched
+        r = client.post(
+            "/api/device/build",
+            json={
+                "template_id": tmpl["id"],
+                "snaptone_slot": other_st,
+                "target_slot": 95,
+            },
+        )
+        assert r.status_code == 400
+    finally:
+        client.delete(f"/api/device/templates/{tmpl['id']}")
+
+
+def test_repoint_engine_guards():
+    from app import patchlib
+
+    p, _ = _a_snaptone_patch()
+    body = open(patchlib.patch_file(p["slot"]), "rb").read()
+    # out-of-range SnapTone slot rejected
+    try:
+        patchlib.repoint_snaptone_body(body, 99)
+        assert False, "expected ValueError for slot 99"
+    except ValueError:
+        pass
+    # wrong length rejected
+    try:
+        patchlib.repoint_snaptone_body(body[:100], 50)
+        assert False, "expected ValueError for short body"
+    except ValueError:
+        pass
+
+
 def test_device_page_and_static_served():
     html = client.get("/device").text
     assert "parsed from exported patches" in html

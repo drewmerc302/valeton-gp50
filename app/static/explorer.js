@@ -304,7 +304,12 @@
     };
     const pv = {};
     (model.params || []).forEach((pd) => {
-      const sv = savedParams && savedParams[pd.algId];
+      // sv is undefined for a fresh pick (no savedParams) OR when the saved set
+      // omits this algId; a real saved value (incl. 0) is kept. NOTE: this MUST be
+      // `savedParams ? ... : undefined`, not `savedParams && savedParams[algId]` —
+      // the latter yields null when savedParams is null, and `null !== undefined`
+      // is true, so every fresh-pick param got Number(null)=0 (silent cabs/amps).
+      const sv = savedParams ? savedParams[pd.algId] : undefined;
       pv[pd.algId] = sv !== undefined ? Number(sv) : resolveDefault(pd);
     });
     e.params[blkIdx] = pv;

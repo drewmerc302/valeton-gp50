@@ -18,6 +18,17 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(title="GP-50 Converter")
 
+
+@app.middleware("http")
+async def no_cache_static(request, call_next):
+    """Force the browser to revalidate static assets so CSS/JS edits show up on
+    a plain reload instead of serving a stale cached copy."""
+    response = await call_next(request)
+    if request.url.path.startswith("/static"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
+
+
 router = APIRouter()
 
 

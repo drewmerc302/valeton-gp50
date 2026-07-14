@@ -903,6 +903,16 @@ input[type="range"]::-moz-range-thumb {
 .write-dev:hover { background: color-mix(in srgb, #d8434a 28%, transparent); }
 .save-bar:not(.dirty) .write-dev { pointer-events: none; }
 .save-note { font-size: 0.78rem; }
+.live-toggle {
+  border: 1px solid var(--accent); background: transparent; color: var(--text);
+  border-radius: 6px; padding: 0.3rem 0.7rem; font-size: 0.82rem; cursor: pointer;
+}
+.live-toggle.on { background: color-mix(in srgb, var(--accent) 22%, transparent); font-weight: 700; }
+/* live-edit is enabled BEFORE any edit, so it must stay usable on a clean bar */
+.save-bar:not(.dirty) .live-toggle { pointer-events: auto; }
+.live-note { font-size: 0.78rem; }
+.live-note.ok { color: var(--accent); }
+.live-note.err { color: #d8434a; }
 
 .chip-row { display: flex; flex-wrap: wrap; gap: 0.3rem; flex: 1; justify-content: flex-end; min-width: 0; }
 .chip-row .chip.bypassed-chip { opacity: 0.38; }

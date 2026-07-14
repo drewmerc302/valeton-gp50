@@ -210,6 +210,13 @@
   let libEntries = []; // all block-library entries (grouped client-side by block)
   let pickerKey = null; // `${slot}:${blkIdx}` of the open model picker, or null
 
+  // live edit: mirror edits to the pedal over WebMIDI (Chrome/Edge) via DeviceBridge
+  let liveSlot = null; // slot currently in live-edit mode, or null
+  let liveBase = null; // that slot's base .prst (Uint8Array) read from the pedal
+  let liveTimer = null; // debounce handle
+  let liveBusy = false; // a write is in flight
+  let livePending = false; // an edit arrived during a write -> flush after
+
   function blockLabel(b) {
     return officialOn() && b.official ? b.label_official : b.label;
   }
@@ -261,6 +268,7 @@
     if (at >= 0) arr.splice(at, 1);
     else if (arr.length < 2) arr.push(blkIdx);  // device cap: 2 blocks per FS
     renderPresets();
+    liveKick(p.slot);
   }
   // current value for a param (pending edit wins over stored value)
   function curVal(slot, blkIdx, pr) {
@@ -315,6 +323,7 @@
     e.params[blkIdx] = pv;
     pickerKey = null;
     renderPresets();
+    liveKick(p.slot);
   }
 
   function applyLibEntry(p, blkIdx, entry) {
@@ -330,6 +339,7 @@
     delete e.params[blkIdx]; // drop the seeded defaults so the on-device values show
     pickerKey = null;
     renderPresets();
+    liveKick(p.slot);
   }
 
   async function saveToLib(p, blkIdx, b) {
@@ -481,6 +491,7 @@
           e.settings[key] = Number(inp.value);
           refreshSaveBar(p);
         });
+        inp.addEventListener("change", () => liveKick(p.slot)); // write on release
         wrap.appendChild(inp); wrap.appendChild(out);
         return wrap;
       };
@@ -546,6 +557,7 @@
         const next = !(e.bypass[blkIdx] !== undefined ? e.bypass[blkIdx] : b.active);
         e.bypass[blkIdx] = next;
         renderPresets();
+        liveKick(p.slot);
       });
       head.appendChild(sw);
 
@@ -607,6 +619,7 @@
               sw.setAttribute("aria-checked", v === 1);
               out.textContent = fmtParam(pr, v);
               refreshSaveBar(p);
+              liveKick(p.slot);
             });
             cell.appendChild(sw);
           } else {
@@ -618,6 +631,7 @@
               out.textContent = fmtParam(pr, v);
               refreshSaveBar(p);
             });
+            inp.addEventListener("change", () => liveKick(p.slot)); // write on release
             cell.appendChild(inp);
           }
           grid.appendChild(cell);
@@ -641,9 +655,23 @@
     const rst = document.createElement("button");
     rst.type = "button"; rst.className = "linkish"; rst.textContent = "reset";
     rst.addEventListener("click", () => { edits.delete(p.slot); renderPresets(); });
+    bar.appendChild(dl); bar.appendChild(wr);
+    // live-edit toggle (WebMIDI only): mirror changes to the pedal in real time
+    if (window.DeviceBridge && DeviceBridge.webmidiAvailable()) {
+      const live = document.createElement("button");
+      live.type = "button";
+      live.className = "live-toggle" + (liveSlot === p.slot ? " on" : "");
+      live.textContent = liveSlot === p.slot ? "● Live edit on" : "⚡ Live edit";
+      live.title = "Mirror edits to the pedal in real time over WebMIDI (writes slot " + p.slot + " on each change)";
+      live.addEventListener("click", () => toggleLiveEdit(p));
+      bar.appendChild(live);
+    }
+    bar.appendChild(rst);
     const note = document.createElement("span");
     note.className = "subtitle save-note";
-    bar.appendChild(dl); bar.appendChild(wr); bar.appendChild(rst); bar.appendChild(note);
+    const liveNoteEl = document.createElement("span");
+    liveNoteEl.className = "subtitle live-note";
+    bar.appendChild(note); bar.appendChild(liveNoteEl);
     d.appendChild(bar);
     return d;
   }
@@ -787,6 +815,81 @@
       if (note) note.textContent = `✓ Written to slot ${target} (${j.acks}/${j.packets} ACKs)${vn}.`;
     } catch (err) {
       if (note) note.textContent = `Write failed: ${err.message}`;
+    }
+  }
+
+  // --- live edit (WebMIDI) ---------------------------------------------------
+  function liveNote(slot, msg, cls) {
+    const el = listEl.querySelector(`.save-bar[data-slot="${slot}"] .live-note`);
+    if (el) { el.textContent = msg || ""; el.className = "subtitle live-note" + (cls ? " " + cls : ""); }
+  }
+
+  async function toggleLiveEdit(p) {
+    if (liveSlot === p.slot) { // turn off
+      liveSlot = null; liveBase = null;
+      renderPresets();
+      return;
+    }
+    if (!window.DeviceBridge || !DeviceBridge.webmidiAvailable()) {
+      UI.toast("Live edit needs Chrome or Edge (WebMIDI).", "err");
+      return;
+    }
+    const dev = DeviceBridge.device();
+    if (dev && inventoryDevice && dev.key !== inventoryDevice.key) {
+      UI.toast(`Pedal is a ${dev.name} but these presets are ${inventoryDevice.name}.`, "err");
+    }
+    try {
+      if (!DeviceBridge.connected()) { liveNote(p.slot, "Connecting to pedal…"); await DeviceBridge.connect(); }
+      liveNote(p.slot, `Reading slot ${p.slot} from the pedal…`);
+      liveBase = await DeviceBridge.readSlotPrst(p.slot);
+      liveSlot = p.slot;
+      activeSlot = p.slot;
+      renderPresets();
+      liveNote(p.slot, "Live — changes write to the pedal on release.", "ok");
+    } catch (e) {
+      liveSlot = null; liveBase = null;
+      liveNote(p.slot, `Live edit failed: ${e.message}`, "err");
+    }
+  }
+
+  function liveKick(slot) {
+    if (liveSlot !== slot || !liveBase) return;
+    livePending = true;
+    if (liveTimer) clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => liveWrite(slot), 200);
+  }
+
+  // Reject if `promise` doesn't settle in `ms`, so a stuck/throttled write can't
+  // pin the UI on "Writing…" forever (e.g. a backgrounded tab throttles the send
+  // pacing). The underlying send stays serialized, so no overlap on retry.
+  function withTimeout(promise, ms, msg) {
+    return Promise.race([
+      promise,
+      new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms)),
+    ]);
+  }
+
+  async function liveWrite(slot) {
+    if (liveSlot !== slot || !liveBase || liveBusy) return; // busy: re-kicked when it finishes
+    liveBusy = true;
+    livePending = false;
+    try {
+      const e = getEdit(slot);
+      const edited = window.PRST.applyEdits(liveBase, {
+        params: e.params, bypass: e.bypass, settings: e.settings,
+        footswitches: e.footswitches || {}, models: e.models || {},
+      });
+      liveNote(slot, "Writing to the pedal…");
+      const r = await withTimeout(
+        DeviceBridge.writeSlot(slot, edited), 15000,
+        "write timed out — is this tab in the background? (bring it to the front)"
+      );
+      liveNote(slot, `✓ Live: slot ${slot} written (${r.acks}/${r.sent} ACKs)`, "ok");
+    } catch (err) {
+      liveNote(slot, `Live write failed: ${err.message}`, "err");
+    } finally {
+      liveBusy = false;
+      if (livePending) liveKick(slot); // edits arrived mid-write -> flush the latest
     }
   }
 

@@ -31,20 +31,21 @@ def test_index_serves_html_with_key_hooks():
         assert hook in html, f"missing hook: {hook}"
 
 
-def test_convert_page_has_preset_subtab_hooks():
-    """The Convert page splits into NAM (A2->A1) and Preset (GP-5<->GP-50) tabs."""
+def test_convert_page_shows_both_tools_stacked():
+    """Both Convert tools are visible on one page (no tabs): NAM (A2->A1) on top,
+    the GP-5<->GP-50 preset converter below."""
     html = client.get("/").text
     for hook in (
-        'id="convert-subtabs"',
-        'data-tab="nam"',
-        'data-tab="preset"',
-        'id="tab-preset"',
-        'id="prst-drop"',
+        'id="drop-zone"',  # NAM section
+        'id="prst-drop"',  # preset section
         'id="prst-target"',
         'id="prst-convert-btn"',
         "convert_prst.js",
     ):
-        assert hook in html, f"missing preset-tab hook: {hook}"
+        assert hook in html, f"missing convert hook: {hook}"
+    # the sub-tab switcher is gone; the Fast (test) button and DI field are removed
+    assert "convert-subtabs" not in html and "data-tab=" not in html
+    assert 'id="fast-preset"' not in html and 'id="di-info"' not in html
 
 
 def test_format_070_present_and_enabled():

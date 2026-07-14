@@ -233,7 +233,7 @@
     if (!ov) return b;
     const pvals = (e.params && e.params[blkIdx]) || {};
     const params = (ov.params || []).map((pd) => {
-      const value = pvals[pd.algId] !== undefined ? pvals[pd.algId] : pd.default;
+      const value = pvals[pd.algId] !== undefined ? pvals[pd.algId] : resolveDefault(pd);
       return {
         name: pd.name, algId: pd.algId, toggle: !!pd.toggle, unit: pd.unit || "",
         min: pd.min, max: pd.max, step: pd.step, value,
@@ -274,6 +274,23 @@
     return pr.unit ? `${v} ${pr.unit}` : v;
   }
 
+  // A param's default value. Trust the model data when it has one (the Valeton
+  // Suite catalog carries real per-model defaults — e.g. cab VOL 50, and EQ bands
+  // legitimately 0 = flat). Only SYNTHESIZE when a default is genuinely missing,
+  // so a swapped model never lands on a silent/extreme value: unknown toggle=off,
+  // unknown time(ms)=500ms, unknown bipolar(EQ-like)=0 (center), else the 0..100
+  // midpoint (=50). Never overrides a real default.
+  function resolveDefault(pd) {
+    const d = Number(pd.default);
+    if (Number.isFinite(d)) return d;
+    if (pd.toggle) return 0;
+    const min = Number(pd.min ?? 0);
+    const max = Number(pd.max ?? 100);
+    if ((pd.unit || "") === "ms") return Math.min(Math.max(500, min), max);
+    if (min < 0) return 0;
+    return Math.round((min + max) / 2);
+  }
+
   // --- model swap + block library ------------------------------------------
   // Set a block's (model, params): the shared core of "change model" and
   // "apply library block". savedParams (algId->value) win over model defaults.
@@ -288,7 +305,7 @@
     const pv = {};
     (model.params || []).forEach((pd) => {
       const sv = savedParams && savedParams[pd.algId];
-      pv[pd.algId] = sv !== undefined ? Number(sv) : pd.default;
+      pv[pd.algId] = sv !== undefined ? Number(sv) : resolveDefault(pd);
     });
     e.params[blkIdx] = pv;
     pickerKey = null;

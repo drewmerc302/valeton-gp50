@@ -15,27 +15,29 @@
       </div>
       <div class="nav-pills">
         <a href="/explorer">Preset Explorer</a>
-        <a href="/device">Device Inspector</a>
-        <a href="/" class="active">Convert</a>
+        <a href="/device">Captures &amp; IRs</a>
+        <a href="/" class="active">NAM and Preset Converter</a>
       </div>
       <div class="nav-spacer"></div>
       <button type="button" id="theme-toggle" class="theme-toggle">☾ Dark</button>
     </nav>
   </header>
   <div class="page-head">
-    <h1>Convert</h1>
-    <p class="subtitle">NAM captures and presets for the Valeton GP-5 &amp; GP-50</p>
-    <div class="nav-pills subtabs" id="convert-subtabs" role="tablist">
-      <button type="button" class="active" data-tab="nam">NAM Capture &nbsp;<span class="hint">A2 → A1</span></button>
-      <button type="button" data-tab="preset">Preset &nbsp;<span class="hint">GP-5 ↔ GP-50</span></button>
-    </div>
+    <h1>NAM and Preset Converter</h1>
+    <p class="subtitle">Two independent tools: distill NAM captures for the pedal, and convert presets between the GP-5 and GP-50.</p>
   </div>
 
   <main>
     <!-- ============ NAM Capture: A2 -> A1 ============ -->
-    <div id="tab-nam" class="tab-panel">
+    <div class="convert-section">
+      <div class="section-head">
+        <h2>NAM Capture &nbsp;<span class="section-tag">A2 → A1</span></h2>
+        <p class="section-desc">Distill a modern NAM <b>A2</b> capture down to the <b>A1</b> architecture the pedal can load.
+          Renders a DI through the A2 model and trains an A1 model to reproduce it, then exports a device-ready <code>.nam</code>.</p>
+      </div>
+
       <section class="card">
-        <h2>1. Files</h2>
+        <h3>1. Files</h3>
         <div id="drop-zone" class="drop-zone" tabindex="0">
           <p>Drag &amp; drop <code>.nam</code> files here, or</p>
           <button type="button" id="file-picker-btn">Choose files&hellip;</button>
@@ -45,33 +47,32 @@
       </section>
 
       <section class="card">
-        <h2>2. Config</h2>
+        <h3>2. Config</h3>
         <div class="config-grid">
           <div class="field">
             <label>Output format</label>
             <div class="format-toggle" id="format-toggle">
               <label class="radio-pill">
                 <input type="radio" name="output_format" id="format-05x" value="0.5x" checked />
-                0.5.x (GP-5 / GP-50)
+                0.5.x <span class="hint">— Valeton GP-5 / GP-50</span>
               </label>
               <label class="radio-pill">
                 <input type="radio" name="output_format" id="format-070" value="0.7.0" />
-                0.7.0 <span class="hint">(newer devices)</span>
+                0.7.0 <span class="hint">— other NAM gear / plugins (non-Valeton)</span>
               </label>
             </div>
           </div>
 
           <div class="field">
-            <label for="epochs">Epochs</label>
-            <div class="epochs-row">
-              <input type="number" id="epochs" min="1" step="1" value="80" />
-              <button type="button" id="fast-preset">Fast (test)</button>
-            </div>
-          </div>
-
-          <div class="field">
-            <label>DI reference</label>
-            <div id="di-info" class="readonly-field">Official v3_0_0 (default)</div>
+            <label for="epochs">Training epochs</label>
+            <input type="number" id="epochs" min="1" step="1" value="80" />
+            <p class="field-help">How many passes the A1 model trains for. More = closer to the A2 tone,
+              but slower (roughly linear).</p>
+            <ul class="epoch-guide">
+              <li><b>5–20</b> — quick preview. Rough, artifacts likely; use only to sanity-check a file.</li>
+              <li><b>40–80</b> — the sweet spot. Faithful tone at a sane runtime. <b>80 is the default.</b></li>
+              <li><b>100–200</b> — chasing the last few %. Diminishing returns and noticeably longer.</li>
+            </ul>
           </div>
         </div>
       </section>
@@ -82,15 +83,23 @@
       </section>
 
       <section class="card" id="results-section" hidden>
-        <h2>3. Progress</h2>
+        <h3>3. Progress</h3>
         <div id="results"></div>
       </section>
     </div>
 
+    <div class="section-divider" role="separator"></div>
+
     <!-- ============ Preset: GP-5 <-> GP-50 ============ -->
-    <div id="tab-preset" class="tab-panel" hidden>
+    <div class="convert-section">
+      <div class="section-head">
+        <h2>Preset &nbsp;<span class="section-tag">GP-5 ↔ GP-50</span></h2>
+        <p class="section-desc">Convert a <code>.prst</code> preset between the two pedals. Each device is auto-detected;
+          the tone, name, volume, tempo and footswitches carry over. GP-5 → GP-50 is always lossless.</p>
+      </div>
+
       <section class="card">
-        <h2>1. Presets</h2>
+        <h3>1. Presets</h3>
         <div id="prst-drop" class="drop-zone" tabindex="0">
           <p>Drag &amp; drop <code>.prst</code> presets here, or</p>
           <button type="button" id="prst-pick-btn">Choose files&hellip;</button>
@@ -100,7 +109,7 @@
       </section>
 
       <section class="card">
-        <h2>2. Target device</h2>
+        <h3>2. Target device</h3>
         <div class="format-toggle" id="prst-target">
           <label class="radio-pill">
             <input type="radio" name="prst_target" value="auto" checked />

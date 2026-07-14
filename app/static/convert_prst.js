@@ -1,26 +1,9 @@
 "use strict";
 
-// Convert page: sub-tab switching + the GP-5 <-> GP-50 preset converter.
-// Talks to /api/device/convert{,/inspect} (see app/api_device.py). File-only —
-// no device I/O. The NAM (A2 -> A1) tab is handled by app.js.
+// Convert page: the GP-5 <-> GP-50 preset converter (the lower section). Talks to
+// /api/device/convert{,/inspect} (see app/api_device.py). File-only — no device
+// I/O. The NAM (A2 -> A1) section above is handled by app.js.
 (() => {
-  // --- sub-tab switching -----------------------------------------------------
-  const tabs = document.getElementById("convert-subtabs");
-  const panels = {
-    nam: document.getElementById("tab-nam"),
-    preset: document.getElementById("tab-preset"),
-  };
-  tabs.querySelectorAll("button[data-tab]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      tabs.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      Object.entries(panels).forEach(([key, el]) => {
-        el.hidden = key !== btn.dataset.tab;
-      });
-    });
-  });
-
-  // --- preset converter ------------------------------------------------------
   const drop = document.getElementById("prst-drop");
   const input = document.getElementById("prst-input");
   const pickBtn = document.getElementById("prst-pick-btn");

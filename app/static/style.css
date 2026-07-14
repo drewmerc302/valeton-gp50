@@ -294,12 +294,7 @@ button:disabled {
   color: var(--muted);
 }
 
-.epochs-row {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.epochs-row input[type="number"] {
+.field input[type="number"] {
   font: inherit;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -308,6 +303,22 @@ button:disabled {
   color: var(--text);
   width: 7rem;
 }
+
+/* Convert page: two stacked, always-visible tool sections */
+.convert-section { display: flex; flex-direction: column; gap: 1rem; }
+.section-head h2 { margin: 0 0 0.3rem; font-size: 1.1rem; font-weight: 800; }
+.section-tag {
+  font-size: 0.68rem; font-weight: 700; background: var(--chip); color: var(--muted);
+  padding: 0.15em 0.6em; border-radius: 999px; vertical-align: middle;
+}
+.section-desc { margin: 0; color: var(--muted); font-size: 0.9rem; max-width: 72ch; line-height: 1.45; }
+.section-divider { height: 1px; background: var(--border); margin: 1.75rem 0; }
+.field-help { margin: 0.35rem 0 0.5rem; color: var(--muted); font-size: 0.82rem; }
+.epoch-guide {
+  margin: 0.25rem 0 0; padding-left: 1.1rem; color: var(--muted); font-size: 0.82rem;
+  display: flex; flex-direction: column; gap: 0.25rem;
+}
+.epoch-guide b { color: var(--text); }
 
 .readonly-field {
   border: 1px solid var(--border);

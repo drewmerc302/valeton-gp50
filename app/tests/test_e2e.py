@@ -76,7 +76,7 @@ def test_convert_e2e_real_conversion(page, live_server, tmp_path):
         "() => document.querySelectorAll('#file-list li').length === 2"
     )
 
-    page.click("#fast-preset")
+    page.fill("#epochs", "5")  # keep the e2e fast (the Fast preset button was removed)
     assert page.input_value("#epochs") == "5"
 
     page.click("#convert-btn")

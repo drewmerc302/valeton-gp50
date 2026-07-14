@@ -9,12 +9,10 @@
   const fileListEl = document.getElementById("file-list");
   const convertBtn = document.getElementById("convert-btn");
   const epochsInput = document.getElementById("epochs");
-  const fastPresetBtn = document.getElementById("fast-preset");
   const errorBanner = document.getElementById("error-banner");
   const resultsSection = document.getElementById("results-section");
   const resultsEl = document.getElementById("results");
 
-  const FAST_EPOCHS = 5;
   const DEFAULT_EPOCHS = 80;
   const POLL_INTERVAL_MS = 1500;
 
@@ -112,10 +110,6 @@
       e.preventDefault();
       fileInput.click();
     }
-  });
-
-  fastPresetBtn.addEventListener("click", () => {
-    epochsInput.value = String(FAST_EPOCHS);
   });
 
   function selectedOutputFormat() {

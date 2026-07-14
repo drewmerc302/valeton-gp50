@@ -16,6 +16,44 @@ refuse a GP-5 write unless `allow_unverified=True`. To verify: capture a GP-5 im
 with MIDI Monitor, run `device_write.verify_against_capture(path)`, and flip
 `WRITE_VERIFIED["gp5"]` once it reproduces byte-for-byte.
 
+### Cross-project corroboration (2026-07-14, from public GP-5 repos)
+
+Read the actual source of the community GP-5 projects (helvecioneto/gp5-wc's
+`ble_sysex.json`, solispensa/Chocotone's `GP5Protocol.cpp/.h`, Builty/
+TonexOneController). What they prove vs. what stays open:
+
+**Proven identical to our GP-50 (mathematically, not by assertion):**
+- Our `prst_format.crc8` (CRC-8/0x07, init 0) reproduces all 6 of gp5-wc's GP-5
+  SysEx CRC bytes exactly. Nibble/"addzero" hi-first encoding + `F0..F7` framing
+  match. (`gp5_crc8` in Chocotone is the same poly-0x07 loop.)
+- GP-5 `request_patch_data` decodes to `[0x09,0x01,0x00,0x02,0x12,0x41]` —
+  byte-identical to our `live_read.read_bank(0x41)`. Read selectors 0x40 (names),
+  0x41 (body), 0x24 (snaptone), 0x20 (IR) all match. Message type 0x01=command,
+  0x02=response, same as ours.
+- The host->device edit command envelope `[0x11, 0x4X, ...]` is a GP-5 family:
+  0x43 change-patch(select), 0x47 change-effect, 0x48 change-param, 0x49
+  toggle-block (all cmd=0x01, concrete bytes in gp5-wc). Our patch-WRITE header
+  `[0x11, 0x4F]` fits this family (0x4F is an unused slot in the observed set).
+
+**Still open (the gate stays):** NO public repo uploads a full preset — they are
+footswitch/controllers that SELECT patches (CC or `[0x11,0x43]`) and edit blocks
+in place (`[0x11,0x47/0x48/0x49]`). So our bulk patch-write specifics — cmd `0x1D`
+(vs. the cmd=0x01 the edit commands use) and the 19-byte chunking — are NOT
+confirmed for the GP-5 by anyone. Confidence rose from "assumed" to "transport +
+read + command-family proven shared; only the bulk-write opcode/chunking
+unconfirmed." Not enough to flip the gate.
+
+**Alternate GP-5 write route (parked, NOT the plan):** a patch could be rebuilt on
+the selected slot by streaming the documented in-place edit commands (`[0x11,0x47]`
+per block model, `[0x11,0x48]` per param, `[0x11,0x49]` per toggle) — every one has
+concrete confirmed bytes. BUT this would be a *second, different* write engine, and
+the design preference is ONE unified write path across both devices, not two. So
+this stays a documented fallback only — reach for it solely if the bulk 0x1D write
+turns out not to work on a GP-5 and can't be made to. Preferred path to unblock GP-5
+writes remains: capture a GP-5 Suite import, confirm the bulk 0x1D stream against it.
+
+Re-run the corroboration any time: `python re/probes/gp5_write_corroboration.py`.
+
 ## Cracked and validated
 
 **Write transport (host → device).** Every write packet is:

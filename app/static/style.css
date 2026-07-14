@@ -742,6 +742,12 @@ button:disabled {
 .block-detail.bypassed .block-detail-head .fs-toggle {
   background: var(--track); color: var(--muted); border-color: var(--border);
 }
+/* an FS assignment stays visible even when the block is bypassed (was: the rule
+   above washed the "on" highlight back to the off look, so assigning FS to an
+   inactive block looked like a no-op) */
+.block-detail.bypassed .block-detail-head .fs-toggle.on {
+  background: var(--accent); color: var(--accent-text); border-color: var(--accent);
+}
 .block-detail.bypassed .block-detail-head .state-toggle { background: var(--track); }
 .block-detail-head .fs-toggle.full { opacity: 0.45; }
 

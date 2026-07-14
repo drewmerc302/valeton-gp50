@@ -29,6 +29,14 @@ updated: 2026-07-13 tick-8 | branch: mvp-converter | phase: DONE | acceptance: 7
 - Features 2-6 real device I/O: need spy capture of SnapTone upload + 2-byte checksum + patch-body decode. Stub = mocked data only.
 
 ## Follow-ups / tech-debt (post-MVP)
+- ST/IR rename (RE session needed, 2026-07-14): imports truncate names to 10 chars
+  → duplicate labels ("American T" ×3). TODO: in Valeton Suite, check whether an
+  existing SnapTone / User IR can be renamed. If yes: MIDI-Monitor spy ONE rename,
+  decode the name-write command (name records: ST catalog sel 0x24, IR bank sel
+  0x20), validate byte-for-byte, gated send — same playbook as the 0x1D patch-write
+  crack. If Suite can't rename, protocol likely has no rename op; fallback is the
+  designed local alias layer (aliases.json slot→alias, keyed with device name,
+  auto-dropped when sync sees the slot's device name change).
 - No job retention/cleanup (work/jobs grows); dup-named uploads in one job collide; subprocess no timeout.
 - Live epoch progress (poll lightning checkpoint dir) — currently coarse.
 - Port _copy_name_metadata (source→A1 name carryover).

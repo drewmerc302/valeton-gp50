@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebMIDI probe — can Chrome talk to the pedal?</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 780px; margin: 2rem auto; padding: 0 1rem; color: #1a1d22; }
+    h1 { font-size: 1.25rem; }
+    .sub { color: #666; margin-top: -0.3rem; }
+    button { font: inherit; font-weight: 700; padding: 0.6rem 1.1rem; border-radius: 8px;
+      border: 1px solid #2f9e8f; background: #2f9e8f; color: #fff; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
+    #log { white-space: pre-wrap; background: #f4f5f7; border: 1px solid #e2e4e8; border-radius: 8px;
+      padding: 0.8rem 1rem; margin-top: 1rem; font: 13px/1.5 ui-monospace, monospace; min-height: 3rem; }
+    .ok { color: #1a7f5a; font-weight: 700; }
+    .err { color: #c0392b; font-weight: 700; }
+    table { border-collapse: collapse; margin-top: 1rem; width: 100%; }
+    th, td { text-align: left; padding: 0.25rem 0.6rem; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+    th { color: #666; font-weight: 700; }
+    td.idx { font-variant-numeric: tabular-nums; color: #888; width: 3rem; }
+    code { background: #eef; padding: 0 0.3em; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>WebMIDI probe — can Chrome talk to the pedal?</h1>
+  <p class="sub">Read-only. Sends one <code>0x40</code> patch-name read (exactly what a scan does) and
+    shows the result. No writes, no risk of wedging. Chrome/Edge only.</p>
+  <p><b>Plug the pedal in via USB, close Valeton Suite, then:</b></p>
+  <button id="go">Connect &amp; read patch names</button>
+  <div id="log">idle.</div>
+  <table id="names" hidden><thead><tr><th>slot</th><th>name</th></tr></thead><tbody></tbody></table>
+
+  <script>
+  "use strict";
+  const logEl = document.getElementById("log");
+  const tbl = document.getElementById("names");
+  const tbody = tbl.querySelector("tbody");
+  const log = (msg, cls) => { logEl.innerHTML += (cls ? `<span class="${cls}">${msg}</span>` : msg) + "\n"; };
+  const reset = () => { logEl.innerHTML = ""; tbody.innerHTML = ""; tbl.hidden = true; };
+
+  // --- protocol (faithful port of patch/live_read.py) -----------------------
+  function crc8(bytes) {                   // CRC-8/SMBUS, poly 0x07, init 0
+    let c = 0;
+    for (const b of bytes) {
+      c ^= b;
+      for (let i = 0; i < 8; i++) c = (c & 0x80) ? ((c << 1) ^ 0x07) & 0xff : (c << 1) & 0xff;
+    }
+    return c;
+  }
+  function buildRequest(selector) {        // [crc, 0x01, 0x00, 0x02, 0x12, selector]
+    const buf = [0, 0x01, 0x00, 0x02, 0x12, selector];
+    buf[0] = crc8(buf);                    // crc over buf with crc byte held 0
+    return buf;
+  }
+  const toWire = (buf) => buf.flatMap((b) => [b >> 4, b & 0xf]);   // nibble, hi-first
+  const nibDecode = (arr) => {                                     // pairs -> bytes
+    const out = [];
+    for (let i = 0; i + 1 < arr.length; i += 2) out.push((arr[i] << 4) | arr[i + 1]);
+    return out;
+  };
+  function reassemble(replies) {           // group by reply cmd (b[1]); sort by idx (b[2])
+    const byCmd = new Map();
+    for (const b of replies) {
+      if (b.length < 4) continue;
+      if (!byCmd.has(b[1])) byCmd.set(b[1], []);
+      byCmd.get(b[1]).push([b[2], b.slice(4)]);
+    }
+    const out = new Map();
+    for (const [cmd, chunks] of byCmd) {
+      chunks.sort((a, z) => a[0] - z[0]);
+      out.set(cmd, chunks.flatMap((c) => c[1]));
+    }
+    return out;
+  }
+  function splitNames(blob, hdr = 2, rec = 20) {   // [2-byte echo] + [u32le idx][16-byte name]...
+    const names = [];
+    const dv = new DataView(new Uint8Array(blob).buffer);
+    for (let i = hdr; i + rec <= blob.length; i += rec) {
+      const idx = dv.getUint32(i, true);
+      let nm = "";
+      for (let j = i + 4; j < i + rec; j++) { if (blob[j] === 0) break; nm += String.fromCharCode(blob[j]); }
+      names.push([idx, nm.trim()]);
+    }
+    return names;
+  }
+
+  function findPort(map) {                 // GP-50 first (so "GP-5" substring doesn't shadow it)
+    const ports = [...map.values()];
+    return ports.find((p) => (p.name || "").includes("GP-50"))
+      || ports.find((p) => (p.name || "").includes("GP-5")) || null;
+  }
+
+  async function run() {
+    reset();
+    if (!navigator.requestMIDIAccess) { log("This browser has no WebMIDI. Use Chrome or Edge.", "err"); return; }
+    let access;
+    try {
+      log("Requesting MIDI access (with SysEx)…");
+      access = await navigator.requestMIDIAccess({ sysex: true });
+    } catch (e) {
+      log("MIDI/SysEx permission denied: " + e.message, "err"); return;
+    }
+    const allIn = [...access.inputs.values()].map((p) => p.name).join(", ") || "(none)";
+    const allOut = [...access.outputs.values()].map((p) => p.name).join(", ") || "(none)";
+    log(`Inputs: ${allIn}`);
+    log(`Outputs: ${allOut}`);
+    const input = findPort(access.inputs);
+    const output = findPort(access.outputs);
+    if (!input || !output) { log("No GP-5 / GP-50 MIDI port found. Connected? Suite closed?", "err"); return; }
+    log(`Using port: ${input.name}`, "ok");
+
+    const replies = [];
+    input.onmidimessage = (e) => {
+      const d = Array.from(e.data);
+      if (d[0] === 0xf0 && d[d.length - 1] === 0xf7) replies.push(nibDecode(d.slice(1, -1)));
+    };
+
+    const req = buildRequest(0x40);
+    const wire = [0xf0, ...toWire(req), 0xf7];
+    log(`Sending 0x40 read: ${wire.map((b) => b.toString(16).padStart(2, "0")).join(" ")}`);
+    try { output.send(wire); } catch (e) { log("send failed: " + e.message, "err"); return; }
+
+    // wait up to 2.5s, or stop once the reply stream goes idle (~400ms quiet)
+    await new Promise((res) => {
+      const t0 = performance.now(); let last = t0, seen = 0;
+      const tick = () => {
+        if (replies.length > seen) { seen = replies.length; last = performance.now(); }
+        const now = performance.now();
+        if (now - t0 > 2500 || (seen > 0 && now - last > 400)) return res();
+        setTimeout(tick, 25);
+      };
+      tick();
+    });
+    input.onmidimessage = null;
+
+    log(`Got ${replies.length} reply frame(s).`);
+    if (!replies.length) { log("No reply. The pedal isn't answering (wrong port, or Suite still open?).", "err"); return; }
+    const banks = reassemble(replies);
+    const blob = [...banks.values()].sort((a, z) => z.length - a.length)[0] || [];
+    const names = splitNames(blob).filter(([, nm]) => nm.length);
+    if (!names.length) { log("Reply received but no names parsed — protocol mismatch worth a look.", "err"); return; }
+    log(`Parsed ${names.length} patch names — WebMIDI ↔ pedal WORKS.`, "ok");
+    tbl.hidden = false;
+    for (const [idx, nm] of names) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="idx">${idx}</td><td>${nm.replace(/</g, "&lt;")}</td>`;
+      tbody.appendChild(tr);
+    }
+  }
+  document.getElementById("go").addEventListener("click", () => {
+    const btn = document.getElementById("go"); btn.disabled = true;
+    run().finally(() => (btn.disabled = false));
+  });
+  </script>
+</body>
+</html>

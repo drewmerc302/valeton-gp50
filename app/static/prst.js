@@ -91,6 +91,17 @@
     for (let i = 0; i < NAME_LEN; i++) b[NAME_OFF + i] = i < name.length ? name.charCodeAt(i) & 0xff : 0;
   }
 
+  // Full .prst from a live device read: name (0x40) + body (0x41). Mirrors
+  // prst_format.rebuild — used to turn a WebMIDI slot read into a .prst.
+  function rebuild(name, body, profile = GP50) {
+    body = u8(body);
+    if (body.length !== bodyLen(profile)) throw new Error(`expected a ${bodyLen(profile)}-byte ${profile.name} body, got ${body.length}`);
+    const out = concat(profile.header, Uint8Array.of(0), SENTINEL, new Uint8Array(NAME_LEN), body);
+    writeName(out, name);
+    refixCrc(out);
+    return out;
+  }
+
   // --- body records ----------------------------------------------------------
   const modelsOffset = (b) => { const i = indexOf(b, REC_MODELS); return i >= 0 ? i + 4 : -1; };
   function modelRecords(b) {
@@ -207,7 +218,7 @@
   const API = {
     NAME_OFF, BODY_OFF, NAME_LEN, CRC_OFF, SETTINGS_OFF, N_BLOCKS, N_PARAM_SLOTS,
     GP50, GP5, DEVICES, profileFor, bodyLen,
-    crc8, refixCrc, detect, readName, writeName,
+    crc8, refixCrc, detect, readName, writeName, rebuild,
     modelsOffset, modelRecords, bypassOffset, paramsOffset, fsOffset, findTLV,
     readVolBpm, readFootswitches, checkConvertible, convert,
   };

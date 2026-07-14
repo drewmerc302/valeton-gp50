@@ -49,7 +49,25 @@ an exact match for `02-Star Night.prst`.
   `device_scan/` over `presetExports/`; Explorer "Scan presets from device" button
   with progress bar + confirm disclaimer.
 
+## WebMIDI validation (beta-2 risk-gate — PASSED, 2026-07-14)
+The read pipeline runs unchanged in a browser over WebMIDI (Chrome/Edge). Proven
+live on the connected GP-50, no Python backend in the path:
+- **Permission + ports:** `requestMIDIAccess({sysex:true})` granted; the GP-50
+  appears as both a MIDI input and output.
+- **Names (`0x40`):** the JS codec (`crc8`/`buildRequest`/nibble `toWire`/`nibDecode`/
+  `reassemble`/`splitNames`, ported in `app/static/webmidi_probe.html`) read all
+  100 names — byte-identical framing to `live_read.py`.
+- **Select + body (`0x41`):** Program Change to slot 0, `0x41` read, strip the
+  `12 41` echo -> 511-byte body, `PRST.rebuild(name, body)` (`app/static/prst.js`)
+  -> a 552-byte `.prst` **byte-for-byte identical** to `select_patch.py --refresh`
+  for the same slot.
+So beta-2's read/select/convert can be a static WebMIDI page. Write is still
+Python-only and deliberately unported (a bad write wedges the pedal).
+
 ## Files
+- `app/static/prst.js` — the .prst format + GP-5<->GP-50 convert in JS; byte-for-byte
+  vs the Python oracle over 102 presets (`app/tests/test_prst_js.mjs`).
+- `app/static/webmidi_probe.html` — read-only WebMIDI probe (the risk-gate above).
 - `patch/reconstruct_prst.py` — rebuild(name, body) -> .prst (+ 100/100 self-check).
 - `patch/scan_bank.py` — production scanner.
 - `patch/cadence_test.py` — settle-timing probe (single persistent port).

@@ -86,6 +86,12 @@ for (const rec of corpus) {
   check(rec.path, "checkConvertible", JSON.stringify(probs) === JSON.stringify(rec.problems),
     JSON.stringify(probs));
 
+  // rebuild round-trip: name + body slice must reconstruct the original .prst
+  const body = prst.subarray(PRST.BODY_OFF);
+  const rebuilt = PRST.rebuild(rec.name, body, dev);
+  check(rec.path, "rebuild.roundtrip", eqBytes(rebuilt, prst),
+    `len ${rebuilt.length} vs ${prst.length}`);
+
   // conversion (byte-for-byte)
   if (rec.convB64) {
     let conv;

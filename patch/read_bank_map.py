@@ -11,7 +11,9 @@ import os
 import json
 
 sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import live_read as L
+from patch import device_protocol
 
 # stream = [2-byte selector][80-byte occupancy array][80 x 16-byte name records]
 # names start at offset 82; record index = (offset-82)//16.
@@ -70,12 +72,20 @@ def main():
     }
     path = os.path.join(os.path.dirname(__file__), "bank_map.json")
     json.dump(out, open(path, "w"), indent=2)
-    print(f"populated user SnapTones: {len(snaptones)}  named user IRs: {len(irs)}")
+    # human detail on stderr; stdout carries only the machine-readable result
+    err = sys.stderr
+    print(
+        f"populated user SnapTones: {len(snaptones)}  named user IRs: {len(irs)}",
+        file=err,
+    )
     for s, n in sorted(snaptones.items()):
-        print(f"  ST  slot {s:3}: {n!r}")
+        print(f"  ST  slot {s:3}: {n!r}", file=err)
     for s, n in sorted(irs.items()):
-        print(f"  IR  slot {s:3} (User IR {s + 1}): {n!r}")
-    print(f"\nwrote {path}")
+        print(f"  IR  slot {s:3} (User IR {s + 1}): {n!r}", file=err)
+    print(f"wrote {path}", file=err)
+    device_protocol.emit(
+        device_protocol.sync_result(True, snaptones=out["snaptone"], irs=out["ir"])
+    )
 
 
 if __name__ == "__main__":

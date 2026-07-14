@@ -15,7 +15,7 @@ import time
 import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from patch import live_read, prst_format
+from patch import device_protocol, live_read, prst_format
 import mido
 
 CATSEL, BODY_SEL = 0x12, 0x41
@@ -48,10 +48,6 @@ def _body(inp, out, body_req):
     return blob[2:] if blob[:2] == bytes([CATSEL, BODY_SEL]) else blob
 
 
-def emit(**kw):
-    print(json.dumps(kw), flush=True)
-
-
 def main():
     start = int(sys.argv[1]) if len(sys.argv) > 1 else 0
     end = int(sys.argv[2]) if len(sys.argv) > 2 else 99
@@ -68,7 +64,7 @@ def main():
     name_req[0] = live_read.crc8(name_req)
 
     total = end - start + 1
-    emit(event="start", total=total)
+    device_protocol.emit(device_protocol.scan_start(total))
     written = errors = 0
     with (
         mido.open_input(live_read.PORT) as inp,
@@ -87,25 +83,19 @@ def main():
             nm = names.get(slot, f"slot{slot}")
             if len(body) != BODY_LEN:
                 errors += 1
-                emit(
-                    event="slot",
-                    i=i,
-                    slot=slot,
-                    name=nm,
-                    ok=False,
-                    done=i + 1,
-                    total=total,
+                device_protocol.emit(
+                    device_protocol.scan_slot(i, slot, nm, False, i + 1, total)
                 )
                 continue
             prst = prst_format.rebuild(nm, body)
             safe = "".join(c if c.isalnum() or c in " -_" else "_" for c in nm)
             open(os.path.join(outdir, f"{slot:02d}-{safe}.prst"), "wb").write(prst)
             written += 1
-            emit(
-                event="slot", i=i, slot=slot, name=nm, ok=True, done=i + 1, total=total
+            device_protocol.emit(
+                device_protocol.scan_slot(i, slot, nm, True, i + 1, total)
             )
             time.sleep(0.05)
-    emit(event="done", written=written, errors=errors, outdir=outdir)
+    device_protocol.emit(device_protocol.scan_done(written, errors, outdir))
 
 
 if __name__ == "__main__":

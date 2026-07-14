@@ -8,12 +8,11 @@ Without --send it only builds + validates (dry run). --send performs the real,
 paced, ACK-checked write; --verify reads the slot name back afterward."""
 
 import argparse
-import json
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from patch import device_write
+from patch import device_protocol, device_write
 
 PORT = "GP-50"
 
@@ -39,7 +38,8 @@ def main():
     ap.add_argument("--verify", action="store_true")
     a = ap.parse_args()
 
-    out = {"ok": False, "slot": a.slot, "sent": False}
+    out = {"packets": None, "validated": None, "acks": None, "verified_name": None}
+    sent = False
     try:
         if not 0 <= a.slot <= 99:
             raise ValueError(f"slot {a.slot} out of range 0..99")
@@ -53,14 +53,16 @@ def main():
 
         if a.send:
             acks = device_write.send_stream(PORT, packets, confirm=True, validated=ok)
-            out["sent"] = True
+            sent = True
             out["acks"] = acks
             if a.verify:
                 out["verified_name"] = read_slot_name(a.slot)
-        out["ok"] = True
+        result = device_protocol.write_result(True, a.slot, sent, **out)
     except Exception as e:  # noqa: BLE001 — surface any failure as JSON to the caller
-        out["error"] = f"{type(e).__name__}: {e}"
-    print(json.dumps(out))
+        result = device_protocol.write_result(
+            False, a.slot, sent, error=f"{type(e).__name__}: {e}", **out
+        )
+    device_protocol.emit(result)
 
 
 if __name__ == "__main__":

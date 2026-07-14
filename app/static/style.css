@@ -560,12 +560,15 @@ button:disabled {
 /* --- Preset Explorer --- */
 .explorer-main { max-width: min(1500px, 96vw); }
 
+.filter-row {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: 0.6rem;
+}
 .filter-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 0.6rem;
-  margin-bottom: 0.6rem;
 }
 .field.inline { display: flex; flex-direction: column; gap: 0.15rem; }
 .field.inline select {
@@ -847,12 +850,26 @@ input[type="range"]::-moz-range-thumb {
 .official-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  font-size: 0.82rem;
-  color: var(--muted);
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
   cursor: pointer;
   white-space: nowrap;
+  padding-bottom: 0.15rem; /* align baseline with the picker dropdowns */
 }
+.official-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch-ui {
+  position: relative; width: 40px; height: 22px; border-radius: 999px; flex: none;
+  background: var(--track); transition: background 0.15s;
+}
+.switch-ui::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: left 0.15s;
+}
+.official-toggle input:checked + .switch-ui { background: var(--slider); }
+.official-toggle input:checked + .switch-ui::after { left: 20px; }
 .chip.official { border-style: dashed; font-style: italic; }
 
 /* block header: caret + plain "BLOCK · Type" label + a lighter model dropdown chip */

@@ -41,10 +41,16 @@
     <section class="card filter-card">
       <div class="lib-head">
         <input type="search" id="preset-search" placeholder="Search presets, models, types&hellip;" class="lib-search" />
-        <label class="official-toggle"><input type="checkbox" id="official-toggle" /> Official names</label>
         <span id="result-count" class="subtitle"></span>
       </div>
-      <div id="filter-bar" class="filter-bar"></div>
+      <div class="filter-row">
+        <div id="filter-bar" class="filter-bar"></div>
+        <label class="official-toggle" title="Show the real gear a model is based on (Green OD → Ibanez TS808) where known">
+          <span>Show real hardware names</span>
+          <input type="checkbox" id="official-toggle" checked />
+          <span class="switch-ui"></span>
+        </label>
+      </div>
       <div id="active-filters" class="active-filters"></div>
       <div class="saved-row">
         <button type="button" id="save-filter" class="linkish" disabled>★ Save this filter set</button>

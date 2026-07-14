@@ -4,6 +4,7 @@
 // Block · Type · Model granularity and filters over it. Reads real parsed data
 // from /api/device/inventory (patches carry a `blocks` array) + /api/device/facets.
 (() => {
+  const UI = window.UI; // shared core: toast/confirm/prompt, fetch helpers, downloads
   const $ = (id) => document.getElementById(id);
   const searchEl = $("preset-search");
   const filterBar = $("filter-bar");
@@ -293,7 +294,7 @@
 
   function applyLibEntry(p, blkIdx, entry) {
     const model = (allModels[entry.block] || []).find((m) => m.fxid === entry.fxid);
-    if (!model) { alert(`Model for "${entry.name}" is no longer available on this device.`); return; }
+    if (!model) { UI.toast(`Model for "${entry.name}" is no longer available on this device.`, "err"); return; }
     applyModel(p, blkIdx, model, entry.params);
   }
 
@@ -307,31 +308,29 @@
   }
 
   async function saveToLib(p, blkIdx, b) {
-    const name = prompt(`Save this ${blockDisplay(b.block)} block to your library as:`, b.model || b.block);
+    const name = await UI.promptDialog(
+      `Save this ${blockDisplay(b.block)} block to your library as:`, b.model || b.block, "Save");
     if (!name) return;
     const params = {};
     (b.params || []).forEach((pr) => { params[pr.algId] = curVal(p.slot, blkIdx, pr); });
     try {
-      const r = await fetch("/api/device/blocklib", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, block: b.block, fxid: b.fxid, model_name: b.model || "", params }),
-      });
-      if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
+      await UI.jpost("/api/device/blocklib",
+        { name, block: b.block, fxid: b.fxid, model_name: b.model || "", params });
       await refreshLib();
       renderPresets();
-    } catch (err) { alert(`Save failed: ${err.message}`); }
+    } catch (err) { UI.toast(`Save failed: ${err.message}`, "err"); }
   }
 
   async function deleteLibEntry(id) {
     try {
-      await fetch(`/api/device/blocklib/${id}`, { method: "DELETE" });
+      await UI.jdel(`/api/device/blocklib/${id}`);
       await refreshLib();
       renderPresets();
     } catch { /* ignore */ }
   }
 
   async function refreshLib() {
-    libEntries = await fetch("/api/device/blocklib").then((r) => r.json()).then((j) => j.entries || []);
+    libEntries = (await UI.jget("/api/device/blocklib")).entries || [];
   }
 
   // Preload the model catalog per block type + the block library so the picker
@@ -341,7 +340,7 @@
     const pairs = await Promise.all(
       blocks.map(async (blk) => {
         try {
-          const j = await fetch(`/api/device/models/${encodeURIComponent(blk)}`).then((r) => r.json());
+          const j = await UI.jget(`/api/device/models/${encodeURIComponent(blk)}`);
           return [blk, j.models || []];
         } catch { return [blk, []]; }
       })
@@ -630,13 +629,8 @@
         }),
       });
       if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
-      const disp = r.headers.get("content-disposition") || "";
-      const m = disp.match(/filename="(.+?)"/);
-      const url = URL.createObjectURL(await r.blob());
-      const a = document.createElement("a");
-      a.href = url; a.download = m ? m[1] : "edited.prst"; a.click();
-      URL.revokeObjectURL(url);
-      if (note) note.textContent = `Saved ${a.download} — import via Suite (device is not written directly).`;
+      const fname = await UI.downloadResponse(r, "edited.prst");
+      if (note) note.textContent = `Saved ${fname} — import via Suite (device is not written directly).`;
     } catch (err) {
       if (note) note.textContent = `Failed: ${err.message}`;
     }
@@ -663,33 +657,27 @@
   async function pastePreset(target) {
     if (!clipboard) return;
     if (clipboard.slot === target.slot) return;
-    if (!(await confirmDialog(`Overwrite slot ${target.slot} "${target.name}" with "${clipboard.name}" (from slot ${clipboard.slot})? Writes to the pedal. Close Valeton Suite first.`, "Paste"))) return;
+    if (!(await UI.confirmDialog(`Overwrite slot ${target.slot} "${target.name}" with "${clipboard.name}" (from slot ${clipboard.slot})? Writes to the pedal. Close Valeton Suite first.`, "Paste"))) return;
     try {
-      const r = await fetch("/api/device/write", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patch_slot: clipboard.slot, target_slot: target.slot, confirm: true }),
-      });
-      const j = await r.json();
-      if (!r.ok || !j.ok) throw new Error(j.detail || j.error || `HTTP ${r.status}`);
+      const j = await UI.jpost("/api/device/write",
+        { patch_slot: clipboard.slot, target_slot: target.slot, confirm: true });
+      if (!j.ok) throw new Error(j.error || "write failed");
       await refreshAfterSlotOp();
     } catch (e) {
-      alert(`Paste failed: ${e.message}`);
+      UI.toast(`Paste failed: ${e.message}`, "err");
     }
   }
 
   async function swapPreset(p, otherSlot) {
     if (otherSlot === p.slot) return;
-    if (!(await confirmDialog(`Swap slot ${p.slot} "${p.name}" ⇄ slot ${otherSlot} "${slotName(otherSlot)}"? Non-destructive, but writes both to the pedal. Close Valeton Suite first.`, "Swap"))) return;
+    if (!(await UI.confirmDialog(`Swap slot ${p.slot} "${p.name}" ⇄ slot ${otherSlot} "${slotName(otherSlot)}"? Non-destructive, but writes both to the pedal. Close Valeton Suite first.`, "Swap"))) return;
     try {
-      const r = await fetch("/api/device/swap", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slot_a: p.slot, slot_b: otherSlot, confirm: true }),
-      });
-      const j = await r.json();
-      if (!r.ok || !j.ok) throw new Error(j.detail || j.error || `HTTP ${r.status}`);
+      const j = await UI.jpost("/api/device/swap",
+        { slot_a: p.slot, slot_b: otherSlot, confirm: true });
+      if (!j.ok) throw new Error(j.error || "swap failed");
       await refreshAfterSlotOp();
     } catch (e) {
-      alert(`Swap failed: ${e.message}`);
+      UI.toast(`Swap failed: ${e.message}`, "err");
     }
   }
 
@@ -739,10 +727,9 @@
   async function writeToDevice(p) {
     const e = getEdit(p.slot);
     const note = listEl.querySelector(`.save-bar[data-slot="${p.slot}"] .save-note`);
-    const ans = prompt(
-      `Write "${p.name}" directly to the pedal.\n\n` +
-        `Enter the target slot (0–99) to OVERWRITE. Make sure Valeton Suite is closed.`,
-      String(p.slot)
+    const ans = await UI.promptDialog(
+      `Write "${p.name}" directly to the pedal. Enter the target slot (0–99) to OVERWRITE. Make sure Valeton Suite is closed.`,
+      String(p.slot), "Next"
     );
     if (ans === null) return;
     const target = Number(ans);
@@ -750,20 +737,15 @@
       if (note) note.textContent = "Write cancelled: slot must be 0–99.";
       return;
     }
-    if (!(await confirmDialog(`Overwrite device slot ${target} with "${p.name}"? This writes to the pedal.`, "Overwrite"))) return;
+    if (!(await UI.confirmDialog(`Overwrite device slot ${target} with "${p.name}"? This writes to the pedal.`, "Overwrite"))) return;
     if (note) note.textContent = `Writing to slot ${target}…`;
     try {
-      const r = await fetch("/api/device/write", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patch_slot: p.slot, params: e.params, bypass: e.bypass,
-          settings: e.settings, footswitches: e.footswitches || {}, models: e.models || {},
-          target_slot: target, confirm: true,
-        }),
+      const j = await UI.jpost("/api/device/write", {
+        patch_slot: p.slot, params: e.params, bypass: e.bypass,
+        settings: e.settings, footswitches: e.footswitches || {}, models: e.models || {},
+        target_slot: target, confirm: true,
       });
-      const j = await r.json();
-      if (!r.ok || !j.ok) throw new Error(j.detail || j.error || `HTTP ${r.status}`);
+      if (!j.ok) throw new Error(j.error || "write failed");
       const vn = j.verified_name ? ` — slot now reads "${j.verified_name}"` : "";
       if (note) note.textContent = `✓ Written to slot ${target} (${j.acks}/${j.packets} ACKs)${vn}.`;
     } catch (err) {
@@ -845,10 +827,10 @@
     });
   }
 
-  function saveCurrent() {
+  async function saveCurrent() {
     if (!filters.length && !searchEl.value.trim()) return;
     const suggested = filters.map(filterLabel).join(", ") || searchEl.value.trim();
-    const name = prompt("Name this filter set:", suggested);
+    const name = await UI.promptDialog("Name this filter set:", suggested, "Save");
     if (!name) return;
     const list = loadSaved();
     list.push({ name, filters: filters.map((f) => ({ ...f })), search: searchEl.value.trim() });
@@ -868,8 +850,8 @@
 
   async function loadInventory() {
     const [inv, fac] = await Promise.all([
-      fetch("/api/device/inventory").then((r) => r.json()),
-      fetch("/api/device/facets").then((r) => r.json()),
+      UI.jget("/api/device/inventory"),
+      UI.jget("/api/device/facets"),
     ]);
     patches = inv.patches || [];
     facets = fac;
@@ -904,95 +886,20 @@
     }
   }
 
-  // --- centered confirm modal (replaces native window.confirm) -----------------
-  // Returns a Promise<bool>. Enter = confirm, Esc / backdrop = cancel.
-  function confirmDialog(message, okLabel = "Confirm") {
-    return new Promise((resolve) => {
-      const overlay = $("confirm-modal");
-      const ok = $("confirm-ok");
-      const cancel = $("confirm-cancel");
-      $("confirm-msg").textContent = message;
-      ok.textContent = okLabel;
-      overlay.hidden = false;
-      ok.focus();
-      function cleanup(result) {
-        overlay.hidden = true;
-        ok.removeEventListener("click", onOk);
-        cancel.removeEventListener("click", onCancel);
-        overlay.removeEventListener("click", onBackdrop);
-        document.removeEventListener("keydown", onKey);
-        resolve(result);
-      }
-      const onOk = () => cleanup(true);
-      const onCancel = () => cleanup(false);
-      const onBackdrop = (e) => { if (e.target === overlay) cleanup(false); };
-      const onKey = (e) => {
-        if (e.key === "Enter") { e.preventDefault(); cleanup(true); }
-        else if (e.key === "Escape") { e.preventDefault(); cleanup(false); }
-      };
-      ok.addEventListener("click", onOk);
-      cancel.addEventListener("click", onCancel);
-      overlay.addEventListener("click", onBackdrop);
-      document.addEventListener("keydown", onKey);
-    });
-  }
-
-  // Text-input variant of the confirm modal (for naming a template).
-  function promptDialog(message, defaultValue = "", okLabel = "Save") {
-    return new Promise((resolve) => {
-      const overlay = $("confirm-modal");
-      const ok = $("confirm-ok");
-      const cancel = $("confirm-cancel");
-      const card = overlay.querySelector(".modal-card");
-      $("confirm-msg").textContent = message;
-      ok.textContent = okLabel;
-      const input = document.createElement("input");
-      input.type = "text";
-      input.className = "modal-input";
-      input.value = defaultValue;
-      card.insertBefore(input, card.querySelector(".modal-actions"));
-      overlay.hidden = false;
-      input.focus();
-      input.select();
-      function cleanup(result) {
-        overlay.hidden = true;
-        input.remove();
-        ok.removeEventListener("click", onOk);
-        cancel.removeEventListener("click", onCancel);
-        overlay.removeEventListener("click", onBackdrop);
-        document.removeEventListener("keydown", onKey);
-        resolve(result);
-      }
-      const onOk = () => cleanup(input.value.trim() || null);
-      const onCancel = () => cleanup(null);
-      const onBackdrop = (e) => { if (e.target === overlay) cleanup(null); };
-      const onKey = (e) => {
-        if (e.key === "Enter") { e.preventDefault(); cleanup(input.value.trim() || null); }
-        else if (e.key === "Escape") { e.preventDefault(); cleanup(null); }
-      };
-      ok.addEventListener("click", onOk);
-      cancel.addEventListener("click", onCancel);
-      overlay.addEventListener("click", onBackdrop);
-      document.addEventListener("keydown", onKey);
-    });
-  }
+  // confirm/prompt modals live in the shared core (ui_core.js, window.UI)
 
   async function createTemplateFrom(p) {
-    const name = await promptDialog(
+    const name = await UI.promptDialog(
       `Save preset #${p.slot} "${p.name}" as a reusable template. Name it (e.g. "Metal", "80s Clean"):`,
       "", "Create template");
     if (!name) return;
     try {
-      const r = await fetch("/api/device/templates/from-patch", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, source_slot: p.slot }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.detail || `HTTP ${r.status}`);
+      await UI.jpost("/api/device/templates/from-patch", { name, source_slot: p.slot });
       const note = listEl.querySelector(`.save-bar[data-slot="${p.slot}"] .save-note`);
       if (note) { note.textContent = `★ Saved template "${name}" — use it in Device Inspector.`; }
+      UI.toast(`★ Saved template "${name}".`, "ok");
     } catch (e) {
-      alert(`Could not save template: ${e.message}`);
+      UI.toast(`Could not save template: ${e.message}`, "err");
     }
   }
 
@@ -1005,7 +912,7 @@
     for (;;) {
       let st;
       try {
-        st = await fetch("/api/device/scan/status").then((r) => r.json());
+        st = await UI.jget("/api/device/scan/status");
       } catch {
         await sleep(1000);
         continue;
@@ -1037,13 +944,13 @@
   const scanButtons = () => [$("scan-btn"), $("scan-btn-hero")].filter(Boolean);
 
   async function startScan() {
-    if (!(await confirmDialog("Begin scan of all 100 presets?", "Begin scan"))) return;
+    if (!(await UI.confirmDialog("Begin scan of all 100 presets?", "Begin scan"))) return;
     scanButtons().forEach((b) => (b.disabled = true));
     $("scan-progress").hidden = false;
     $("scan-fill").style.width = "0%";
     $("scan-status").textContent = "Starting…";
     try {
-      const r = await fetch("/api/device/scan", { method: "POST" }).then((x) => x.json());
+      const r = await UI.jpost("/api/device/scan", {});
       if (!r.ok) throw new Error(r.error || "could not start scan");
       pollScan();
     } catch (e) {

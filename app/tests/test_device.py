@@ -408,6 +408,31 @@ def test_explorer_page_served():
     assert "gp50_savedFilters" in js  # saved filter sets persist to localStorage
 
 
+def test_shared_ui_core_loaded_by_both_pages():
+    # ui_core.js is the shared seam: both pages load it before their own scripts,
+    # and neither page re-implements its primitives.
+    for route in ("/explorer", "/device"):
+        html = client.get(route).text
+        assert "ui_core.js" in html, f"{route} missing the shared core"
+    core = client.get("/static/ui_core.js").text
+    assert "window.UI" in core
+    for prim in (
+        "toast",
+        "confirmDialog",
+        "promptDialog",
+        "isEmptyName",
+        "isUserIrSlot",
+    ):
+        assert prim in core
+    # the explorer no longer hand-rolls alert()/its own confirm modal
+    js = client.get("/static/explorer.js").text
+    assert "alert(" not in js
+    assert "window.confirm" not in js
+    # one User-IR threshold, defined in the core only
+    assert "0x100000" in core
+    assert "0xfffff" not in client.get("/static/device_a.js").text
+
+
 def test_snaptone_patches_are_the_nam_patches():
     # SnapTone slots live at 50..67 (the NAM patches, e.g. slot 50 = MesaLS)
     body = client.get("/api/device/usage/snaptone/50").json()

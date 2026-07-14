@@ -21,7 +21,7 @@
     const top = document.createElement("div");
     top.className = "ac-top";
     top.innerHTML =
-      `<span class="ac-slot">#${it.slot > 0xfffff ? "IR" : it.slot}</span>` +
+      `<span class="ac-slot">#${window.UI.isUserIrSlot(it.slot) ? "IR" : it.slot}</span>` +
       `<span class="ac-name">${name}</span>`;
     const foot = document.createElement("div");
     foot.className = "ac-foot";

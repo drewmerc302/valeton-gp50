@@ -1,10 +1,11 @@
 "use strict";
 /*
- * DeviceCore — shared engine for the Device Inspector layouts.
+ * DeviceCore — the Device Inspector's data + workflow engine.
  *
- * One data + workflow layer that every layout variant (registry-first / two-pane /
- * build-forward) consumes, so the correctness-critical parts — device reads, the
- * build-from-capture flow, and the device WRITE — live in exactly one place.
+ * Owns the correctness-critical parts — device reads, the build-from-capture
+ * flow, and the device WRITE — in exactly one place. Page-agnostic UI
+ * primitives (toast, confirm, fetch helpers, slot semantics) come from the
+ * shared core (ui_core.js, window.UI); device_a.js renders the page.
  *
  * Public surface: window.DeviceCore
  *   .state            {snaptones, userIrs, factoryCabs, patches, templates, loaded}
@@ -15,12 +16,12 @@
  *   .sync()           re-read SnapTone catalog from the pedal
  *   .createTemplate(name, sourceSlot) / .deleteTemplate(id)
  *   .openBuildModal({snaptoneSlot?, templateId?})   the shared build UI → device write
- *   .confirmDialog(msg, okLabel) / .toast(msg, kind)
+ *   .confirmDialog(msg, okLabel) / .toast(msg, kind)   (delegates to UI)
  *   .on(evt, cb)      'change' fires after any mutation (sync/build/template CRUD)
  */
 (() => {
   const API = "/api/device";
-  const USER_IR_BASE = 0x100000;
+  const UI = window.UI; // shared page-agnostic core (ui_core.js)
 
   const listeners = {};
   function emit(evt) {
@@ -34,23 +35,10 @@
     loaded: false, source: "",
   };
 
-  const isUserIr = (it) => it.is_user_ir || it.slot >= USER_IR_BASE;
+  const isUserIr = (it) => it.is_user_ir || UI.isUserIrSlot(it.slot);
 
-  async function jget(path) {
-    const r = await fetch(API + path);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
-  }
-  async function jpost(path, body) {
-    const r = await fetch(API + path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body || {}),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.detail || data.error || `HTTP ${r.status}`);
-    return data;
-  }
+  const jget = (path) => UI.jget(API + path);
+  const jpost = (path, body) => UI.jpost(API + path, body);
 
   async function load() {
     const inv = await jget("/inventory");
@@ -78,7 +66,7 @@
   // Default factory presets are all named "GP-50" — treated as empty/safe targets.
   const isEmpty = (slot) => {
     const p = state.patches.find((x) => x.slot === slot);
-    return !!p && (p.name || "").trim().toUpperCase() === "GP-50";
+    return !!p && UI.isEmptyName(p.name);
   };
   const emptySlots = () => state.patches.filter((p) => isEmpty(p.slot));
   const slotName = (slot) => {
@@ -89,7 +77,9 @@
   // fall back to the generic label only when no name came through.
   function irLabel(it) {
     if (it.name) return it.name;
-    return isUserIr(it) ? `User IR ${it.slot - USER_IR_BASE + 1}` : `Cab #${it.slot}`;
+    return isUserIr(it)
+      ? `User IR ${it.slot - UI.USER_IR_BASE + 1}`
+      : `Cab #${it.slot}`;
   }
 
   async function sync() {
@@ -103,9 +93,14 @@
     return t;
   }
   async function deleteTemplate(id) {
-    const r = await fetch(`${API}/templates/${id}`, { method: "DELETE" });
+    let ok = true;
+    try {
+      await UI.jdel(`${API}/templates/${id}`);
+    } catch {
+      ok = false;
+    }
     await load();
-    return r.ok;
+    return ok;
   }
 
   // Build + write to the device (confirm handled by the caller). Reloads on success.
@@ -126,16 +121,6 @@
     if (uiRoot) return;
     uiRoot = document.createElement("div");
     uiRoot.innerHTML = `
-      <div id="dc-toast" class="dc-toast" hidden></div>
-      <div id="dc-confirm" class="modal-overlay" hidden>
-        <div class="modal-card">
-          <p id="dc-confirm-msg" class="modal-msg"></p>
-          <div class="modal-actions">
-            <button type="button" id="dc-confirm-cancel" class="modal-btn">Cancel</button>
-            <button type="button" id="dc-confirm-ok" class="modal-btn primary">Confirm</button>
-          </div>
-        </div>
-      </div>
       <div id="dc-usage" class="modal-overlay" hidden>
         <div class="modal-card build-card">
           <h2 id="dc-usage-title" class="build-title"></h2>
@@ -168,42 +153,9 @@
     document.body.appendChild(uiRoot);
   }
 
-  let toastTimer;
-  function toast(msg, kind) {
-    ensureUi();
-    const el = document.getElementById("dc-toast");
-    el.textContent = msg;
-    el.className = "dc-toast" + (kind ? ` dc-toast-${kind}` : "");
-    el.hidden = false;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.hidden = true; }, 4200);
-  }
-
-  function confirmDialog(message, okLabel = "Confirm") {
-    ensureUi();
-    return new Promise((resolve) => {
-      const ov = document.getElementById("dc-confirm");
-      const ok = document.getElementById("dc-confirm-ok");
-      const cancel = document.getElementById("dc-confirm-cancel");
-      document.getElementById("dc-confirm-msg").textContent = message;
-      ok.textContent = okLabel;
-      ov.hidden = false;
-      ok.focus();
-      const done = (v) => {
-        ov.hidden = true;
-        ok.removeEventListener("click", onOk);
-        cancel.removeEventListener("click", onCancel);
-        ov.removeEventListener("click", onBackdrop);
-        resolve(v);
-      };
-      const onOk = () => done(true);
-      const onCancel = () => done(false);
-      const onBackdrop = (e) => { if (e.target === ov) done(false); };
-      ok.addEventListener("click", onOk);
-      cancel.addEventListener("click", onCancel);
-      ov.addEventListener("click", onBackdrop);
-    });
-  }
+  // toast + confirm live in the shared core (ui_core.js)
+  const toast = UI.toast;
+  const confirmDialog = UI.confirmDialog;
 
   function templateChainText(t) {
     const chain = (t.summary && t.summary.chain) || [];
@@ -347,14 +299,8 @@
           }),
         });
         if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
-        const disp = r.headers.get("content-disposition") || "";
-        const m = disp.match(/filename="(.+?)"/);
-        const blob = await r.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url; a.download = m ? m[1] : "patch.prst"; a.click();
-        URL.revokeObjectURL(url);
-        toast(`Downloaded ${a.download} — import via Suite.`, "ok");
+        const fname = await UI.downloadResponse(r, "patch.prst");
+        toast(`Downloaded ${fname} — import via Suite.`, "ok");
         close();
       } catch (e) { toast(`Build failed: ${e.message}`, "err"); }
     };

@@ -9,13 +9,23 @@
 <body>
   <header>
     <nav class="top-nav">
-      <a href="/">Convert</a>
-      <a href="/device" class="active">Device Inspector</a>
-      <a href="/explorer">Preset Explorer</a>
+      <div class="brand">
+        <div class="brand-logo">GP</div>
+        <div><div class="brand-name">GP-50 Suite</div><div class="brand-sub">Companion</div></div>
+      </div>
+      <div class="nav-pills">
+        <a href="/">Convert</a>
+        <a href="/device" class="active">Device Inspector</a>
+        <a href="/explorer">Preset Explorer</a>
+      </div>
+      <div class="nav-spacer"></div>
+      <button type="button" id="theme-toggle" class="theme-toggle">☾ Dark</button>
     </nav>
+  </header>
+  <div class="page-head">
     <h1>Device Inspector</h1>
     <p class="subtitle">Browse SnapTones, IRs/cabs and patches &mdash; see what uses what, and clone patches onto other SnapTones</p>
-  </header>
+  </div>
 
   <div id="source-note" class="source-note" role="status">parsed from exported patches</div>
 
@@ -82,6 +92,7 @@
     </section>
   </main>
 
+  <script src="/static/theme.js"></script>
   <script src="/static/device.js"></script>
 </body>
 </html>

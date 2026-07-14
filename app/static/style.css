@@ -1,30 +1,60 @@
+/* Design system: "GP-50 Suite" Variant D — matched to the Valeton editor look.
+   Red accent, blue slider, per-block palette. Theme-aware (system + manual toggle). */
 :root {
   color-scheme: light dark;
-  --bg: #f5f6f8;
+  --bg: #f2f3f5;
   --card-bg: #ffffff;
-  --text: #1a1d23;
-  --muted: #5b6270;
-  --border: #dfe2e8;
-  --accent: #3a6df0;
+  --text: #1b1e23;
+  --muted: #6a7280;
+  --border: #e4e6ea;
+  --accent: #d0342f;
   --accent-text: #ffffff;
-  --ok: #1e9e5a;
+  --slider: #2a6fdb;
+  --ok: #2f9e8f;
   --fail: #d8434a;
-  --track: #e7e9ee;
+  --track: #e7e9ed;
+  --chip: #f0f1f4;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(16, 20, 28, 0.05), 0 4px 14px rgba(16, 20, 28, 0.05);
+  /* per-block palette (matched to Valeton editor pedal colors) */
+  --blk-nr: #8d939c;
+  --blk-pre: #9333ea;
+  --blk-dst: #e0404d;
+  --blk-amp: #e08a1e;
+  --blk-cab: #b06a30;
+  --blk-eq: #bd9455;
+  --blk-mod: #2fb3cc;
+  --blk-dly: #e0559a;
+  --blk-rvb: #3f7de0;
+  --blk-ns: #7c3aed;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16181d;
-    --card-bg: #1f232b;
-    --text: #e8eaee;
-    --muted: #9aa1ad;
-    --border: #2d323c;
-    --accent: #6d94ff;
-    --accent-text: #0e1116;
-    --ok: #3ecb84;
+  :root:not([data-theme="light"]) {
+    --bg: #15171b;
+    --card-bg: #1e2126;
+    --text: #e9eaee;
+    --muted: #98a0ac;
+    --border: #2b2f37;
+    --track: #333944;
+    --chip: #272b32;
+    --slider: #4a86e8;
     --fail: #ff6b70;
-    --track: #2a2f38;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
   }
+}
+
+[data-theme="dark"] {
+  --bg: #15171b;
+  --card-bg: #1e2126;
+  --text: #e9eaee;
+  --muted: #98a0ac;
+  --border: #2b2f37;
+  --track: #333944;
+  --chip: #272b32;
+  --slider: #4a86e8;
+  --fail: #ff6b70;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 * {
@@ -38,50 +68,68 @@ body {
   color: var(--text);
 }
 
+/* sticky app bar: logo + branding + pill tabs + theme toggle */
 header {
-  padding: 1.75rem 1.5rem 0.5rem;
-  max-width: 720px;
-  margin: 0 auto;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  padding: 0;
+  max-width: none;
+  margin: 0;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
 }
 
 .top-nav {
+  max-width: 1280px;
+  margin: 0 auto;
   display: flex;
+  align-items: center;
   gap: 1.25rem;
-  margin-bottom: 0.75rem;
+  padding: 0.6rem 1.5rem;
+  flex-wrap: wrap;
   font-size: 0.85rem;
 }
 
-.top-nav a {
-  color: var(--muted);
-  text-decoration: none;
-  font-weight: 600;
+.brand { display: flex; align-items: center; gap: 0.6rem; }
+.brand-logo {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--accent); color: #fff;
+  display: grid; place-items: center; font-weight: 800; font-size: 0.7rem; letter-spacing: 0.02em;
 }
+.brand-name { font-weight: 800; font-size: 0.95rem; line-height: 1.15; }
+.brand-sub { font-size: 0.66rem; color: var(--muted); font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
 
-.top-nav a:hover {
-  color: var(--text);
+.nav-pills { display: flex; gap: 2px; background: var(--chip); border-radius: 999px; padding: 3px; }
+.nav-pills a {
+  color: var(--muted); text-decoration: none; font-weight: 700; font-size: 0.82rem;
+  padding: 0.45rem 1rem; border-radius: 999px; transition: color 0.15s;
 }
+.nav-pills a:hover { color: var(--text); }
+.nav-pills a.active { color: var(--accent); background: var(--card-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14); }
 
-.top-nav a.active {
-  color: var(--accent);
+.nav-spacer { flex: 1; }
+.theme-toggle {
+  background: transparent; border: 1px solid var(--border); border-radius: 8px;
+  padding: 0.4rem 0.75rem; font: inherit; font-size: 0.78rem; font-weight: 600;
+  color: var(--text); cursor: pointer;
 }
+.theme-toggle:hover { border-color: var(--muted); }
 
 .mock-banner {
-  max-width: 720px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 0.6rem 1.5rem;
   color: var(--fail);
   background: color-mix(in srgb, var(--fail) 12%, transparent);
-  border-top: 1px solid var(--fail);
   border-bottom: 1px solid var(--fail);
   font-weight: 600;
   font-size: 0.9rem;
   text-align: center;
 }
 
-header h1 {
-  margin: 0 0 0.25rem;
-  font-size: 1.5rem;
-}
+.page-head { max-width: 1280px; margin: 0 auto; padding: 1.25rem 1.5rem 0; }
+.page-head h1 { margin: 0 0 0.15rem; font-size: 1.35rem; font-weight: 800; }
 
 .subtitle {
   margin: 0;
@@ -90,19 +138,20 @@ header h1 {
 }
 
 main {
-  max-width: 720px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 1rem 1.5rem 3rem;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.9rem;
 }
 
 .card {
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.25rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1rem 1.25rem;
 }
 
 .card h2 {
@@ -535,32 +584,51 @@ button:disabled {
 }
 .filter-pill .x { color: var(--muted); margin-left: 0.2rem; }
 
-.preset-list { list-style: none; margin: 0; padding: 0; }
+/* each preset is a card */
+.preset-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.75rem; }
 .preset-row {
-  padding: 0.55rem 0;
-  border-bottom: 1px solid var(--border);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
 }
-.preset-row:last-child { border-bottom: none; }
-.preset-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; cursor: pointer; }
-.preset-head:hover .preset-name { color: var(--accent); }
-.caret { color: var(--muted); width: 0.9rem; display: inline-block; font-size: 0.8rem; }
-.preset-num { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 0.85rem; }
-.preset-name { font-weight: 600; }
+.preset-head { display: flex; align-items: center; gap: 0.7rem; padding: 0.8rem 1rem; cursor: pointer; }
+.preset-head:hover { background: var(--chip); }
+.caret { color: var(--muted); width: 0.9rem; display: inline-block; font-size: 0.75rem; }
+.preset-num { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 0.82rem; font-weight: 800; }
+.preset-name { font-weight: 700; font-size: 0.95rem; }
 
 .preset-detail {
-  margin: 0.5rem 0 0.25rem 1.4rem;
-  padding: 0.5rem 0.75rem;
-  border-left: 2px solid var(--border);
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  padding: 0.9rem 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.7rem;
 }
-.patch-settings { font-size: 0.85rem; color: var(--muted); }
+.patch-settings {
+  font-size: 0.85rem; color: var(--muted);
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 0.6rem 1rem;
+}
 .patch-settings b { color: var(--text); }
 
-.block-detail { display: flex; flex-direction: column; gap: 0.35rem; }
-.block-detail.bypassed { opacity: 0.5; }
-.block-detail-head { display: flex; align-items: center; gap: 0.5rem; }
+/* block cards with a colored left spine + colored header bar */
+.block-detail {
+  display: flex; flex-direction: column;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--c, var(--border));
+  border-radius: 10px;
+  overflow: hidden;
+}
+.block-detail.bypassed { opacity: 0.75; }
+.block-detail-head {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--c, var(--chip)); color: #fff;
+}
+.block-detail.bypassed .block-detail-head { background: var(--chip); color: var(--muted); }
 .state {
   font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em;
   padding: 0.05em 0.4em; border-radius: 999px;
@@ -568,11 +636,33 @@ button:disabled {
 .state.on { color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); }
 .state.off { color: var(--muted); background: var(--track); }
 
+/* model chip + toggles sit on the colored header bar */
+.block-detail-head .model-chip {
+  background: rgba(255, 255, 255, 0.22); color: #fff;
+  border-color: transparent; border-left-color: transparent;
+}
+.block-detail-head .model-chip:hover { filter: brightness(1.06); border-color: transparent; }
+.block-detail.bypassed .block-detail-head .model-chip { background: var(--border); color: var(--text); }
+/* on/off + FS toggles on the colored header */
+.block-detail-head .state-toggle,
+.block-detail-head .fs-toggle {
+  background: rgba(255, 255, 255, 0.16); color: #fff; border-color: rgba(255, 255, 255, 0.35);
+}
+.block-detail-head .state-toggle.on { background: #fff; color: var(--ok); border-color: transparent; }
+.block-detail-head .fs-toggle.on { background: #fff; color: var(--c); border-color: transparent; }
+.block-detail.bypassed .block-detail-head .state-toggle,
+.block-detail.bypassed .block-detail-head .fs-toggle {
+  background: var(--track); color: var(--muted); border-color: var(--border);
+}
+.block-detail-head .fs-toggle.full { opacity: 0.45; }
+.block-detail-head > .state-toggle { margin-left: auto; }
+
 .param-grid {
   display: flex;
   flex-wrap: nowrap;        /* every block's params on one line */
-  gap: 0.4rem;
-  margin-left: 0.3rem;
+  gap: 0.6rem;
+  padding: 0.7rem 0.8rem;
+  overflow-x: auto;
 }
 .param {
   flex: 1 1 0;
@@ -603,15 +693,34 @@ button:disabled {
 .param.editable input[type="range"] {
   clear: both;
   width: 100%;
-  margin: 0.15rem 0 0;
-  accent-color: var(--accent);
-  height: 1rem;
+  margin: 0.25rem 0 0;
 }
 .param.editable input[type="checkbox"] {
   clear: both;
   align-self: flex-start;
-  accent-color: var(--accent);
+  accent-color: var(--slider);
   margin-top: 0.15rem;
+}
+
+/* blue slider with a white/blue-ringed thumb, matching the Valeton editor */
+input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  height: 1.1rem; background: transparent; cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 999px;
+  background: linear-gradient(var(--slider), var(--slider)) 0 / var(--fill, 0%) 100% no-repeat var(--track);
+}
+input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background: var(--track); }
+input[type="range"]::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--slider); }
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+  background: #fff; border: 2.5px solid var(--slider); margin-top: -5px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #fff; border: 2.5px solid var(--slider); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .state-toggle {
@@ -667,18 +776,26 @@ button:disabled {
   white-space: nowrap;
 }
 .chip:hover { border-color: var(--accent); }
-/* per-block accent tint (left border), keeps the row scannable like FM3-Edit */
-.chip { border-left-width: 3px; }
-.chip.blk-nr   { border-left-color: #7a7f8a; }
-.chip.blk-pre  { border-left-color: #3fb0d8; }
-.chip.blk-dst  { border-left-color: #e0733a; }
-.chip.blk-amp  { border-left-color: #d8434a; }
-.chip.blk-cab  { border-left-color: #c9a13a; }
-.chip.blk-eq   { border-left-color: #6a9a3a; }
-.chip.blk-mod  { border-left-color: #b05ad0; }
-.chip.blk-dly  { border-left-color: #3a6df0; }
-.chip.blk-rvb  { border-left-color: #2f9e8f; }
-.chip.blk-ns   { border-left-color: #6d94ff; }
+/* per-block color, exposed as --c so tags can fill and headers can tint */
+.chip { border-left: 3px solid var(--c, var(--border)); }
+.chip.blk-nr   { --c: var(--blk-nr); }
+.chip.blk-pre  { --c: var(--blk-pre); }
+.chip.blk-dst  { --c: var(--blk-dst); }
+.chip.blk-amp  { --c: var(--blk-amp); }
+.chip.blk-cab  { --c: var(--blk-cab); }
+.chip.blk-eq   { --c: var(--blk-eq); }
+.chip.blk-mod  { --c: var(--blk-mod); }
+.chip.blk-dly  { --c: var(--blk-dly); }
+.chip.blk-rvb  { --c: var(--blk-rvb); }
+.chip.blk-ns   { --c: var(--blk-ns); }
+
+/* preset-row + all-patches block tags: filled colored pills (Valeton editor look) */
+.chip-row .chip {
+  background: var(--c); color: #fff; border-color: transparent; border-left-color: transparent;
+  font-weight: 700; border-radius: 6px;
+}
+.chip-row .chip:hover { border-color: transparent; filter: brightness(1.07); }
+.chip-row .chip.official { color: #fff; }
 
 .saved-row {
   display: flex;

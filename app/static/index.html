@@ -9,13 +9,23 @@
 <body>
   <header>
     <nav class="top-nav">
-      <a href="/" class="active">Convert</a>
-      <a href="/device">Device Inspector</a>
-      <a href="/explorer">Preset Explorer</a>
+      <div class="brand">
+        <div class="brand-logo">GP</div>
+        <div><div class="brand-name">GP-50 Suite</div><div class="brand-sub">Companion</div></div>
+      </div>
+      <div class="nav-pills">
+        <a href="/" class="active">Convert</a>
+        <a href="/device">Device Inspector</a>
+        <a href="/explorer">Preset Explorer</a>
+      </div>
+      <div class="nav-spacer"></div>
+      <button type="button" id="theme-toggle" class="theme-toggle">☾ Dark</button>
     </nav>
+  </header>
+  <div class="page-head">
     <h1>GP-50 Converter</h1>
     <p class="subtitle">NAM A2 &rarr; A1 batch conversion for the Valeton GP-50</p>
-  </header>
+  </div>
 
   <main>
     <section class="card">
@@ -71,6 +81,7 @@
     </section>
   </main>
 
+  <script src="/static/theme.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

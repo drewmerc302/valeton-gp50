@@ -440,7 +440,7 @@
       const b = effBlock(p.slot, blkIdx, b0);
       if (!b.model && !b.params.length && !b0.model) return;
       const bd = document.createElement("div");
-      bd.className = "block-detail";
+      bd.className = `block-detail blk-${b.block.replace(/[^a-z]/gi, "").toLowerCase()}`;
       const active = e.bypass[blkIdx] !== undefined ? e.bypass[blkIdx] : b.active;
       if (!active) bd.classList.add("bypassed");
 

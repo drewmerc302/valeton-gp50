@@ -913,7 +913,7 @@
   const scanButtons = () => [$("scan-btn"), $("scan-btn-hero")].filter(Boolean);
 
   async function startScan() {
-    if (!confirm("Scan all 100 presets from the device? This reads them one at a time (~60–90s) and briefly cycles the pedal through each preset. Close Valeton Suite first.")) return;
+    if (!confirm("Begin scan of all 100 presets?")) return;
     scanButtons().forEach((b) => (b.disabled = true));
     $("scan-progress").hidden = false;
     $("scan-fill").style.width = "0%";

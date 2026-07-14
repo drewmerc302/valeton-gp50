@@ -60,10 +60,11 @@ Both read back correctly on the pedal. Rescan or overwrite them whenever.
 - `e32a969` Device Inspector redesign + 3 layout variants (shared engine)
 - `86a7cfc` Explorer "★ Create template from" CTA
 
-## Open questions for you
-1. Which layout wins — A, B, C, or A+C's build strip? I'll finish the winner and
-   delete the other two routes.
-2. Template naming on build: I default the new patch's name to the SnapTone's name.
-   Prefer the template name, or a "Template · Capture" combo?
-3. Bulk build (one template → many captures at once, like the old multi-clone) —
-   worth adding to the winning layout, or keep it one-at-a-time?
+## Open questions — ALL ANSWERED (2026-07-14)
+1. Layout: **A (Registry) won.** B/C deleted (routes 404, files removed) plus a
+   9-point feedback round — see commit `01a5634`.
+2. Built-patch naming: **SnapTone name default stands** (current behavior,
+   `/api/device/build` `name = req.name or snaptone.name`). No combo, no
+   template-name default.
+3. Bulk build: **skipped for now.** Deliberate scope cut, not an oversight —
+   revisit only if one-at-a-time building proves tedious in real use.

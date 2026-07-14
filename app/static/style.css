@@ -444,28 +444,46 @@ button:disabled {
   gap: 0.75rem;
 }
 
-.scan-row {
-  max-width: 1280px;
-  margin: 0.6rem auto 0;
-  padding: 0 1.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+/* device header: "last scan · rescan" bar (populated) or empty-state hero (first run) */
+#device-header { display: flex; flex-direction: column; gap: 0.6rem; }
+.device-bar[hidden], .empty-hero[hidden] { display: none; }
+.device-bar {
+  display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+  padding: 0.6rem 1rem;
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  font-size: 0.85rem;
 }
-#scan-btn {
-  font: inherit; font-size: 0.8rem; cursor: pointer;
-  border: 1px solid var(--border); background: var(--card-bg);
-  color: var(--text); border-radius: 8px; padding: 0.35rem 0.75rem;
+.device-status-text b { font-weight: 800; }
+.rescan-hint { color: var(--muted); }
+
+.scan-btn {
+  font: inherit; font-size: 0.82rem; font-weight: 700; cursor: pointer;
+  border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent); border-radius: 8px; padding: 0.4rem 0.85rem; flex: none;
 }
-#scan-btn:hover { border-color: var(--accent); }
-#scan-btn:disabled { opacity: 0.5; cursor: default; }
+.scan-btn:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.scan-btn:disabled { opacity: 0.5; cursor: default; }
+.scan-btn.primary {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+  font-size: 0.95rem; padding: 0.6rem 1.4rem;
+}
+.scan-btn.primary:hover { filter: brightness(1.08); background: var(--accent); }
+
+.empty-hero {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: 0.5rem; padding: 3rem 1.5rem;
+}
+.empty-hero-icon { font-size: 2.6rem; }
+.empty-hero h2 { margin: 0.2rem 0 0; font-size: 1.35rem; font-weight: 800; }
+.empty-hero p { margin: 0 0 0.6rem; color: var(--muted); font-size: 0.92rem; max-width: 460px; }
+
 /* progress only appears while scanning, and stays compact */
 .scan-progress[hidden] { display: none; }
-.scan-progress { display: flex; align-items: center; gap: 0.6rem; }
-.scan-bar { width: 160px; height: 6px; border-radius: 999px; background: var(--track); overflow: hidden; }
+.scan-progress { display: flex; align-items: center; gap: 0.6rem; justify-content: center; }
+.scan-bar { width: 200px; height: 6px; border-radius: 999px; background: var(--track); overflow: hidden; }
 .scan-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.3s ease; }
-#scan-status { font-size: 0.78rem; }
+#scan-status { font-size: 0.8rem; }
 
 .slot-actions {
   display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;

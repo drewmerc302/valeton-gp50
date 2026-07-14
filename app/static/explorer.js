@@ -841,7 +841,35 @@
     ]);
     patches = inv.patches || [];
     facets = fac;
-    if (inv.source) $("source-note").textContent = inv.source;
+  }
+
+  // --- device header: empty-state hero (no data) vs "last scan · rescan" bar ----
+  const LAST_SCAN_KEY = "gp50_lastScan";
+  function relTime(ts) {
+    if (!ts) return null;
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return "just now";
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m} min ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h} hr ago`;
+    return `${Math.floor(h / 24)} days ago`;
+  }
+  function updateDeviceHeader() {
+    const has = patches.length > 0;
+    $("device-bar").hidden = !has;
+    $("empty-hero").hidden = has;
+    const filterCard = document.querySelector(".filter-card");
+    const listSection = listEl.closest("section");
+    if (filterCard) filterCard.hidden = !has;
+    if (listSection) listSection.hidden = !has;
+    if (has) {
+      const t = relTime(Number(localStorage.getItem(LAST_SCAN_KEY)));
+      $("device-status-text").innerHTML =
+        `<b>${patches.length} presets</b>` +
+        (t ? ` · scanned from your device ${t}` : ` from your device`) +
+        ` &nbsp;<span class="rescan-hint">— changed presets on the pedal? Rescan to sync.</span>`;
+    }
   }
 
   // --- scan all presets from the device (one at a time; no bulk read exists) -----
@@ -866,23 +894,27 @@
       if (!st.running) {
         if (!st.error) {
           status.textContent = `Scanned ${st.written || st.done} presets${st.errors ? `, ${st.errors} skipped` : ""}. Loading…`;
+          localStorage.setItem(LAST_SCAN_KEY, String(Date.now()));
           await loadInventory();
           await loadModelsAndLib();
           buildFilterBar();
+          updateDeviceHeader();
           render();
           status.textContent = `✓ Loaded ${patches.length} presets from the device.`;
           setTimeout(() => { $("scan-progress").hidden = true; }, 3000); // tidy up when done
         }
-        $("scan-btn").disabled = false;
+        scanButtons().forEach((b) => (b.disabled = false));
         return;
       }
       await sleep(700);
     }
   }
 
+  const scanButtons = () => [$("scan-btn"), $("scan-btn-hero")].filter(Boolean);
+
   async function startScan() {
     if (!confirm("Scan all 100 presets from the device? This reads them one at a time (~60–90s) and briefly cycles the pedal through each preset. Close Valeton Suite first.")) return;
-    $("scan-btn").disabled = true;
+    scanButtons().forEach((b) => (b.disabled = true));
     $("scan-progress").hidden = false;
     $("scan-fill").style.width = "0%";
     $("scan-status").textContent = "Starting…";
@@ -892,22 +924,24 @@
       pollScan();
     } catch (e) {
       $("scan-status").textContent = `Failed: ${e.message}`;
-      $("scan-btn").disabled = false;
+      scanButtons().forEach((b) => (b.disabled = false));
     }
   }
 
-  $("scan-btn").addEventListener("click", startScan);
+  scanButtons().forEach((b) => b.addEventListener("click", startScan));
 
   async function init() {
     try {
       await loadInventory();
     } catch (e) {
-      $("source-note").textContent = `Could not load presets: ${e.message}`;
+      $("scan-status").textContent = `Could not load presets: ${e.message}`;
+      $("empty-hero").hidden = false;
       return;
     }
     await loadModelsAndLib();
     buildFilterBar();
     renderSaved();
+    updateDeviceHeader();
     render();
   }
 

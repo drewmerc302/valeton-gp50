@@ -24,20 +24,33 @@
   </header>
   <div class="page-head">
     <h1>Preset Explorer</h1>
-    <p class="subtitle">Every preset's active chain at <code>Block · Type · Model</code> granularity &mdash; filter by block, drive type, reverb model, anything</p>
-  </div>
-
-  <div id="source-note" class="source-note" role="status">parsed from exported patches</div>
-
-  <div class="scan-row">
-    <button type="button" id="scan-btn">⟳ Scan presets from device</button>
-    <div id="scan-progress" class="scan-progress" hidden>
-      <div class="scan-bar"><div id="scan-fill" class="scan-fill"></div></div>
-      <span id="scan-status" class="subtitle"></span>
-    </div>
+    <p class="subtitle">Browse, filter, and edit every preset on your GP-50.</p>
   </div>
 
   <main class="explorer-main">
+    <!-- device status / scan control -->
+    <div id="device-header">
+      <!-- shown once presets are loaded -->
+      <div id="device-bar" class="device-bar" hidden>
+        <span id="device-status-text" class="device-status-text"></span>
+        <div class="nav-spacer"></div>
+        <button type="button" id="scan-btn" class="scan-btn">⟳ Rescan device</button>
+      </div>
+      <!-- shown when nothing is loaded yet (first run) -->
+      <div id="empty-hero" class="empty-hero card" hidden>
+        <div class="empty-hero-icon">🎸</div>
+        <h2>Load your presets</h2>
+        <p>Connect your GP-50 over USB with Valeton Suite closed, then scan to pull all
+          100 presets into the editor. It takes about a minute and reads one preset at a time.</p>
+        <button type="button" id="scan-btn-hero" class="scan-btn primary">⟳ Scan device</button>
+      </div>
+      <!-- shared scan progress (either state) -->
+      <div id="scan-progress" class="scan-progress" hidden>
+        <div class="scan-bar"><div id="scan-fill" class="scan-fill"></div></div>
+        <span id="scan-status" class="subtitle"></span>
+      </div>
+    </div>
+
     <section class="card filter-card">
       <div class="lib-head">
         <input type="search" id="preset-search" placeholder="Search presets, models, types&hellip;" class="lib-search" />

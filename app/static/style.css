@@ -628,7 +628,11 @@ button:disabled {
   display: flex; align-items: center; gap: 0.5rem;
   padding: 0.55rem 0.7rem;
   background: var(--c, var(--chip)); color: #fff;
+  cursor: pointer;
 }
+.block-detail-head .model-chip,
+.block-detail-head .state-toggle,
+.block-detail-head .fs-toggle { cursor: pointer; }
 .block-detail.bypassed .block-detail-head { background: var(--chip); color: var(--muted); }
 .state {
   font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em;

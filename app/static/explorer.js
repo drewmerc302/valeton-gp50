@@ -453,17 +453,16 @@
 
       const head = document.createElement("div");
       head.className = "block-detail-head";
-      const caret = document.createElement("button");
-      caret.type = "button";
-      caret.className = "block-caret";
-      caret.textContent = showParams ? "▾" : "▸";
-      caret.title = showParams ? "Collapse block" : "Expand block";
-      caret.addEventListener("click", (ev) => {
-        ev.stopPropagation();
+      // clicking anywhere on the header (except its controls) expands/collapses
+      const toggleBlock = () => {
         if (blockToggled.has(bkey)) blockToggled.delete(bkey);
         else blockToggled.add(bkey);
         renderPresets();
-      });
+      };
+      head.addEventListener("click", toggleBlock);
+      const caret = document.createElement("span");
+      caret.className = "block-caret";
+      caret.textContent = showParams ? "▾" : "▸";
       head.appendChild(caret);
       // plain "BLOCK · Type" label + a separate lighter model dropdown chip
       const bd_ = blockDisplay(b.block);
@@ -480,7 +479,8 @@
         "model-chip" + (e.override[blkIdx] ? " changed" : "") + (pickerKey === pkey ? " open" : "");
       chipBtn.innerHTML = `${modelText} <span class="chip-caret">▾</span>`;
       chipBtn.title = "Change model / apply a library block";
-      chipBtn.addEventListener("click", () => {
+      chipBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
         pickerKey = pickerKey === pkey ? null : pkey;
         renderPresets();
       });
@@ -490,7 +490,8 @@
       sw.className = "state-toggle " + (active ? "on" : "off");
       sw.textContent = active ? "on" : "off";
       sw.title = "Toggle block on/off";
-      sw.addEventListener("click", () => {
+      sw.addEventListener("click", (ev) => {
+        ev.stopPropagation();
         const next = !(e.bypass[blkIdx] !== undefined ? e.bypass[blkIdx] : b.active);
         e.bypass[blkIdx] = next;
         renderPresets();
@@ -510,7 +511,7 @@
         fb.title = full
           ? `${fsKey.toUpperCase()} already has 2 blocks`
           : `Assign this block to ${fsKey.toUpperCase()}`;
-        if (!full) fb.addEventListener("click", () => toggleFS(p, blkIdx, fsKey));
+        if (!full) fb.addEventListener("click", (ev) => { ev.stopPropagation(); toggleFS(p, blkIdx, fsKey); });
         head.appendChild(fb);
       });
       bd.appendChild(head);

@@ -2,6 +2,24 @@
 
 Goal: write edited patches to the pedal directly (no Suite round-trip).
 
+## WebMIDI write validated on live hardware (2026-07-14)
+The GP-50 patch write now works from a **browser** over WebMIDI, byte-for-byte with
+the Python path — no backend. Ported to `app/static/webmidi_write.js`
+(build/validate) + `webmidi_device.js` `_sendStream` (gated, paced, ACK-waited);
+the builder is verified byte-for-byte vs the Python oracle over 70 vectors
+(`app/tests/test_write_js.mjs`), and Python is 29/29 vs Suite captures.
+
+Proven live on the connected GP-50 (slot 99, backed up first, left untouched):
+- **Same-content write:** 29 packets, **29/29 ACKs**, read-back byte-identical, no
+  wedge. Transport + framing confirmed identical to Suite's.
+- **Change-and-restore:** renamed slot 99 -> the new name showed in the 0x40 name
+  table (the write actually edited the preset) -> wrote the backup back -> name and
+  body both restored byte-for-byte. Efficacy + reversibility confirmed.
+
+So beta-2's live editor is unblocked: a param edit is `writeSlot(slot, editedPrst)`
+with a changed float instead of a changed name. Write stays gated (confirm +
+validate + `WRITE_VERIFIED`); GP-5 write is still refused until a GP-5 capture.
+
 ## GP-5 status (2026-07-14)
 
 The write path in `patch/device_write.py` is now device-parametric: the payload is

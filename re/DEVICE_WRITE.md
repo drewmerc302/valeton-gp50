@@ -2,6 +2,20 @@
 
 Goal: write edited patches to the pedal directly (no Suite round-trip).
 
+## GP-5 status (2026-07-14)
+
+The write path in `patch/device_write.py` is now device-parametric: the payload is
+`prst[NAME_OFF:]`, so a 507-byte GP-5 .prst builds a valid 26-packet stream (vs the
+GP-50's 29) and `validate_stream` accepts either device's payload length. **BUT the
+write COMMAND (0x1D), the `0x11 0x4F` header, and the 19-byte block size were only
+ever confirmed against GP-50 Suite captures.** They are almost certainly shared (the
+read protocol 0x40/0x41 is confirmed shared, the .prst container + CRC are identical),
+but until a GP-5 Suite patch-import is captured this is unverified. `WRITE_VERIFIED =
+{gp50: True, gp5: False}` gates it: `send_stream` (and the CLI / device_io / API)
+refuse a GP-5 write unless `allow_unverified=True`. To verify: capture a GP-5 import
+with MIDI Monitor, run `device_write.verify_against_capture(path)`, and flip
+`WRITE_VERIFIED["gp5"]` once it reproduces byte-for-byte.
+
 ## Cracked and validated
 
 **Write transport (host → device).** Every write packet is:

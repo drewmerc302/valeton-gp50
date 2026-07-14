@@ -13,8 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from patch import device_protocol, device_write
-
-PORT = "GP-50"
+from patch.prst_format import detect
 
 
 def read_slot_name(slot: int):
@@ -36,6 +35,12 @@ def main():
     ap.add_argument("--slot", type=int, required=True)
     ap.add_argument("--send", action="store_true")
     ap.add_argument("--verify", action="store_true")
+    ap.add_argument(
+        "--allow-unverified",
+        action="store_true",
+        help="override the write-protocol gate for a device that isn't "
+        "capture-verified (GP-5). Risk: unconfirmed opcodes may disrupt the device.",
+    )
     a = ap.parse_args()
 
     out = {"packets": None, "validated": None, "acks": None, "verified_name": None}
@@ -44,6 +49,7 @@ def main():
         if not 0 <= a.slot <= 99:
             raise ValueError(f"slot {a.slot} out of range 0..99")
         prst = open(a.prst, "rb").read()
+        src = detect(prst)  # raises on an unrecognized .prst
         packets = device_write.build_patch_write_stream(prst, a.slot)
         ok, reason = device_write.validate_stream(packets)
         out["packets"] = len(packets)
@@ -52,7 +58,31 @@ def main():
             raise ValueError(f"stream failed validation: {reason}")
 
         if a.send:
-            acks = device_write.send_stream(PORT, packets, confirm=True, validated=ok)
+            from patch import live_read
+
+            port, connected = live_read.find_port()
+            if src.key != connected.key:
+                raise ValueError(
+                    f"{a.prst} is a {src.name} preset but the connected device is "
+                    f"{connected.name} — convert it first (patch/convert.py)"
+                )
+            if (
+                not device_write.WRITE_VERIFIED.get(connected.key)
+                and not a.allow_unverified
+            ):
+                raise ValueError(
+                    f"{connected.name} patch-write protocol is not capture-verified "
+                    f"(command/header assumed from the GP-50). Refusing. Capture a "
+                    f"{connected.name} Suite import to confirm, or pass "
+                    f"--allow-unverified to override at your own risk."
+                )
+            acks = device_write.send_stream(
+                port,
+                packets,
+                confirm=True,
+                validated=ok,
+                allow_unverified=a.allow_unverified,
+            )
             sent = True
             out["acks"] = acks
             if a.verify:

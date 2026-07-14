@@ -269,7 +269,7 @@ def test_write_endpoint_applies_edits_and_writes(monkeypatch):
 
     captured = {}
 
-    def fake_write(prst, slot, timeout=30.0):
+    def fake_write(prst, slot, timeout=30.0, allow_unverified=False):
         captured["prst"] = prst
         captured["slot"] = slot
         return {
@@ -320,7 +320,7 @@ def test_swap_writes_both_bodies(monkeypatch):
 
     calls = []
 
-    def fake_write(prst, slot, timeout=30.0):
+    def fake_write(prst, slot, timeout=30.0, allow_unverified=False):
         calls.append(
             (slot, len(prst), prst[0x19:0x29].split(b"\0")[0].decode("latin1"))
         )

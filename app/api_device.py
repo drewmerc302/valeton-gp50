@@ -212,6 +212,7 @@ class BuildRequest(BaseModel):
     name: str | None = None  # patch name; defaults to the SnapTone's name
     confirm: bool = False  # required for a device write
     download: bool = False  # true -> return the .prst instead of writing
+    allow_unverified: bool = False  # override the GP-5 unverified-write gate
 
 
 @router.post("/build", response_model=None)
@@ -241,7 +242,9 @@ def build(req: BuildRequest) -> Response | dict:
         raise HTTPException(400, "refusing to write: confirm=true required")
     if req.target_slot is None or not 0 <= req.target_slot <= patchlib.PATCH_SLOT_MAX:
         raise HTTPException(400, "target_slot 0..99 required to write to the device")
-    result = device_io.write_patch(prst, req.target_slot)
+    result = device_io.write_patch(
+        prst, req.target_slot, allow_unverified=req.allow_unverified
+    )
     if result.get("ok"):
         patchlib.reload()
     return result
@@ -250,6 +253,7 @@ def build(req: BuildRequest) -> Response | dict:
 class WriteRequest(EditRequest):
     target_slot: int  # device patch index 0..99 to overwrite
     confirm: bool = False  # must be true — the UI sets it after user confirmation
+    allow_unverified: bool = False  # override the GP-5 unverified-write gate
 
 
 @router.post("/write")
@@ -274,7 +278,9 @@ def write_to_device(req: WriteRequest) -> dict:
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
-    result = device_io.write_patch(data, req.target_slot)
+    result = device_io.write_patch(
+        data, req.target_slot, allow_unverified=req.allow_unverified
+    )
     if result.get("ok"):
         patchlib.reload()  # inventory may have changed on the device
     return result
@@ -284,6 +290,7 @@ class SwapRequest(BaseModel):
     slot_a: int
     slot_b: int
     confirm: bool = False
+    allow_unverified: bool = False  # override the GP-5 unverified-write gate
 
 
 @router.post("/swap")
@@ -298,13 +305,17 @@ def swap(req: SwapRequest) -> dict:
     if not fa or not fb:
         raise HTTPException(404, "one or both slots are not in the inventory")
     body_a, body_b = open(fa, "rb").read(), open(fb, "rb").read()  # read both up front
-    r1 = device_io.write_patch(body_a, req.slot_b)
+    r1 = device_io.write_patch(
+        body_a, req.slot_b, allow_unverified=req.allow_unverified
+    )
     if not r1.get("ok"):
         return {
             "ok": False,
             "error": f"swap aborted before any change: {r1.get('error')}",
         }
-    r2 = device_io.write_patch(body_b, req.slot_a)
+    r2 = device_io.write_patch(
+        body_b, req.slot_a, allow_unverified=req.allow_unverified
+    )
     patchlib.reload()
     if not r2.get("ok"):
         return {

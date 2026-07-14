@@ -17,7 +17,22 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from patch.prst_format import PRST_LEN, NAME_OFF, check_length, crc8  # noqa: E402
+from patch.prst_format import (  # noqa: E402
+    NAME_OFF,
+    DeviceProfile,
+    check_length,
+    crc8,
+    detect,
+)
+
+# Which devices' WRITE protocol is capture-verified. The read protocol (0x40/0x41)
+# is confirmed shared, and the .prst container + CRC are identical, so the write
+# format below is very likely shared too — but the write COMMAND byte, the 0x11 0x4F
+# header, and the 19-byte block size were only ever confirmed against GP-50 Suite
+# captures. Until a GP-5 patch-import is captured, a GP-5 write reuses the GP-50
+# constants on faith; send_stream() refuses it unless explicitly allowed. See
+# re/DEVICE_WRITE.md.
+WRITE_VERIFIED = {"gp50": True, "gp5": False}
 
 
 def build_packet(cmd: int, index: int, payload: bytes) -> list:
@@ -36,11 +51,17 @@ PATCH_BLOCK = 19  # payload bytes per write block
 PATCH_HDR = bytes([0x11, 0x4F])  # constant marker before the slot byte
 
 
+def _expected_payload_len(profile: DeviceProfile) -> int:
+    """Reassembled write payload = 6-byte header + prst[NAME_OFF:]."""
+    return 6 + (profile.prst_len - NAME_OFF)
+
+
 def build_patch_write_stream(prst: bytes, slot: int) -> list:
     """Reconstruct Suite's exact patch-import stream for writing `prst` to `slot`.
 
-    Validated byte-for-byte (29/29) against two real Suite captures (US Lead ->
-    slots 1 and 99). Format:
+    Validated byte-for-byte (29/29) against two real GP-50 Suite captures (US Lead
+    -> slots 1 and 99). Device-agnostic in shape — the payload is prst[NAME_OFF:],
+    so a 507-byte GP-5 .prst yields a shorter stream automatically. Format:
       device_payload = [0x11, 0x4F, slot, 0x00, 0x00, 0x00] + prst[0x19:]
       (the 6-byte header replaces the .prst body's leading FF FF FF FF sentinel;
        `slot` is the 0-based device index)
@@ -48,7 +69,7 @@ def build_patch_write_stream(prst: bytes, slot: int) -> list:
     Returns wire-byte packets (each incl F0/F7). Does NOT send — see send_stream."""
     if not 0 <= slot <= 0xFF:
         raise ValueError(f"slot out of range: {slot}")
-    check_length(prst)
+    check_length(prst, detect(prst))  # a recognized GP-5 or GP-50 .prst
     payload = PATCH_HDR + bytes([slot, 0x00, 0x00, 0x00]) + prst[NAME_OFF:]
     return [
         build_packet(PATCH_WRITE_CMD, i // PATCH_BLOCK, payload[i : i + PATCH_BLOCK])
@@ -64,8 +85,8 @@ def validate_stream(packets: list) -> tuple:
     """Confirm a patch-write stream is well-formed before sending (the gate for
     arbitrary edited patches, since they can't match a Suite capture). Checks every
     packet's CRC, that cmd is the patch-write command, indices are contiguous from 0,
-    and the reassembled payload has the expected header + length for a 552-byte .prst.
-    Returns (ok, reason)."""
+    and the reassembled payload has the expected header + a length matching a known
+    device (GP-50 or GP-5). Returns (ok, reason)."""
     payload = bytearray()
     for i, w in enumerate(packets):
         if not w or w[0] != 0xF0 or w[-1] != 0xF7:
@@ -86,10 +107,14 @@ def validate_stream(packets: list) -> tuple:
         if length != len(buf) - 4:
             return False, f"packet {i}: length {length} != payload {len(buf) - 4}"
         payload += bytes(buf[4 : 4 + length])
-    if len(payload) != 6 + (PRST_LEN - NAME_OFF):  # header + prst[NAME_OFF:]
+    from patch.prst_format import DEVICES
+
+    valid_lens = {_expected_payload_len(p): p.name for p in DEVICES.values()}
+    if len(payload) not in valid_lens:
         return (
             False,
-            f"payload {len(payload)} bytes, expected {6 + (PRST_LEN - NAME_OFF)}",
+            f"payload {len(payload)} bytes, expected one of "
+            f"{sorted(valid_lens)} (GP-50/GP-5)",
         )
     if payload[:2] != PATCH_HDR:
         return False, f"payload header {payload[:2].hex()} != {PATCH_HDR.hex()}"
@@ -121,10 +146,38 @@ def verify_against_capture(path: str) -> tuple:
     return ok, bad
 
 
-def send_stream(port_name, packets, confirm=False, validated=False, ack_wait=0.15):
+def _infer_device_key(packets: list):
+    """Best-effort device key from a stream's reassembled payload length, or None."""
+    from patch.prst_format import DEVICES
+
+    total = 0
+    for w in packets:
+        if not w or w[0] != 0xF0 or w[-1] != 0xF7:
+            return None
+        buf = _nib_decode(w[1:-1])
+        if len(buf) >= 4:
+            total += buf[3]  # per-packet payload length
+    for p in DEVICES.values():
+        if _expected_payload_len(p) == total:
+            return p.key
+    return None
+
+
+def send_stream(
+    port_name,
+    packets,
+    confirm=False,
+    validated=False,
+    ack_wait=0.15,
+    allow_unverified=False,
+):
     """Send pre-built, VALIDATED packets to the device. Refuses otherwise.
 
     packets: list of wire-byte lists. Requires confirm=True and validated=True.
+    Also refuses a stream for a device whose write protocol is not capture-verified
+    (WRITE_VERIFIED) unless allow_unverified=True — the GP-5 write command/header are
+    assumed identical to the GP-50's but have never been confirmed against a GP-5
+    capture, and blind-sending a wrong opcode has wedged this hardware before.
     Paces like Suite: after each block, wait for the device's ACK sysex (up to
     ack_wait s) before the next block — the device has a shallow MIDI queue and
     overrunning it has wedged the pedal. Returns the count of ACKs seen."""
@@ -133,6 +186,15 @@ def send_stream(port_name, packets, confirm=False, validated=False, ack_wait=0.1
             "refusing to send: device writes require confirm=True and packets "
             "validated byte-for-byte against a Suite capture (see re/DEVICE_WRITE.md)"
         )
+    if not allow_unverified:
+        key = _infer_device_key(packets)
+        if key is not None and not WRITE_VERIFIED.get(key, False):
+            raise RuntimeError(
+                f"refusing to send: the {key} patch-write protocol is not "
+                f"capture-verified (write command/header assumed from the GP-50). "
+                f"Capture a GP-5 Suite import to confirm, or pass "
+                f"allow_unverified=True to override at your own risk."
+            )
     import time
     import mido  # noqa: local import so the builder works without MIDI installed
 

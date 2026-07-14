@@ -9,6 +9,9 @@ Use these terms exactly; they map 1:1 to modules and UI copy.
   A **device profile** (`prst_format.DeviceProfile`, keys `gp5`/`gp50`) carries
   the three things that differ: 20-byte header, .prst length (507 vs 552), and
   the 0xFF-block device tag. `prst_format.detect()` identifies a .prst's device.
+  Reads/scans/conversions work on both. Device WRITE is capture-verified only for
+  the GP-50 (`device_write.WRITE_VERIFIED`); a GP-5 write reuses the GP-50 opcodes
+  on faith and is gated behind `allow_unverified` until a GP-5 import is captured.
 - **Patch** — one device preset slot (index 0–99). Serialized as a **.prst**
   file (layout: `patch/prst_format.py`; 552 B on GP-50, 507 B on GP-5). A patch
   whose name is the factory default (the device name, `"GP-50"` / `"GP-5"`) is

@@ -78,14 +78,19 @@ def sync_snaptones(timeout: float = 25.0) -> dict:
         _lock.release()
 
 
-def write_patch(prst: bytes, slot: int, timeout: float = 30.0) -> dict:
-    """Write a 552-byte .prst to device patch index `slot` (0..99), then read the
-    slot name back to verify. Gated + paced in the subprocess. Returns
-    {ok, sent, acks, verified_name|error}. Never raises."""
+def write_patch(
+    prst: bytes, slot: int, timeout: float = 30.0, allow_unverified: bool = False
+) -> dict:
+    """Write a .prst (GP-50 552 B or GP-5 507 B) to device patch index `slot`
+    (0..99), then read the slot name back to verify. Gated + paced in the
+    subprocess; the .prst's device must match the connected device, and a GP-5
+    write is refused unless allow_unverified=True (its write protocol is assumed
+    from the GP-50, never capture-verified). Returns {ok, sent, acks,
+    verified_name|error}. Never raises."""
     if not 0 <= slot <= patchlib.PATCH_SLOT_MAX:
         return {"ok": False, "error": f"slot {slot} out of range (0..99)"}
     try:
-        prst_format.check_length(prst)
+        prst_format.check_length(prst, prst_format.detect(prst))
     except ValueError as e:
         return {"ok": False, "error": str(e)}
     if not _lock.acquire(blocking=False):
@@ -97,18 +102,21 @@ def write_patch(prst: bytes, slot: int, timeout: float = 30.0) -> dict:
         fd, tmp = tempfile.mkstemp(suffix=".prst")
         with os.fdopen(fd, "wb") as f:
             f.write(prst)
+        args = [
+            MIDI_PY,
+            WRITER,
+            "--prst",
+            tmp,
+            "--slot",
+            str(slot),
+            "--send",
+            "--verify",
+        ]
+        if allow_unverified:
+            args.append("--allow-unverified")
         try:
             proc = subprocess.run(
-                [
-                    MIDI_PY,
-                    WRITER,
-                    "--prst",
-                    tmp,
-                    "--slot",
-                    str(slot),
-                    "--send",
-                    "--verify",
-                ],
+                args,
                 cwd=PROJECT_ROOT,
                 capture_output=True,
                 text=True,

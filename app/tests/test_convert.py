@@ -12,7 +12,7 @@ import struct
 
 import pytest
 
-from patch import convert, prst_format as fmt
+from patch import convert, device_write as dw, prst_format as fmt
 
 PROJECT_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -146,3 +146,48 @@ def test_converted_settings_shape_matches_target():
         ids.append(payload[i])
         i += 4 + struct.unpack_from("<H", payload, i + 2)[0]
     assert ids == list(range(1, 11))  # GP-50 carries fields id1..id10
+
+
+# --- device write path (build/validate/gate; no hardware) ---------------------
+
+
+def _reassembled_payload_len(packets):
+    return sum(dw._nib_decode(w[1:-1])[3] for w in packets)
+
+
+def test_write_stream_builds_and_validates_for_both_devices():
+    for files, prst_len in ((GP50_FILES, 552), (GP5_FILES, 507)):
+        prst = open(files[0], "rb").read()
+        packets = dw.build_patch_write_stream(prst, 7)
+        ok, reason = dw.validate_stream(packets)
+        assert ok, reason
+        # payload = 6-byte header + prst[NAME_OFF:]
+        assert _reassembled_payload_len(packets) == 6 + (prst_len - fmt.NAME_OFF)
+        first = dw._nib_decode(packets[0][1:-1])
+        assert bytes(first[4:6]) == dw.PATCH_HDR and first[6] == 7  # header + slot
+
+
+def test_gp50_stream_unchanged_29_packets():
+    """Regression guard: the GP-50 stream is still the byte-verified 29-packet form."""
+    prst = open(GP50_FILES[0], "rb").read()
+    assert len(dw.build_patch_write_stream(prst, 0)) == 29
+
+
+def test_send_gate_refuses_unverified_gp5():
+    gp5_stream = dw.build_patch_write_stream(open(GP5_FILES[0], "rb").read(), 3)
+    with pytest.raises(RuntimeError, match="not.*verified|verified"):
+        dw.send_stream("port", gp5_stream, confirm=True, validated=True)
+    # allow_unverified bypasses the gate (then fails later on the bogus port)
+    with pytest.raises(Exception) as ei:
+        dw.send_stream(
+            "no-such-port",
+            gp5_stream,
+            confirm=True,
+            validated=True,
+            allow_unverified=True,
+        )
+    assert "capture-verified" not in str(ei.value)
+
+
+def test_write_verified_map():
+    assert dw.WRITE_VERIFIED == {"gp50": True, "gp5": False}

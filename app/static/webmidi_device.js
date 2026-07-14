@@ -6,9 +6,11 @@
  * CRC-8/0x07, same nibble framing, same reassembly. Proven byte-for-byte against
  * the Python path on live hardware (see re/DEVICE_READ.md, the WebMIDI section).
  *
- * READ + SELECT ONLY. There is deliberately no write path here — a bad write can
- * wedge the pedal (power-cycle to recover), so writes stay on the gated Python
- * path until that's validated as carefully as reads were.
+ * READ + SELECT, plus one gated raw-send primitive (_sendStream) used only by
+ * webmidi_write.js. All patch-write building/validation/gating lives there; this
+ * module just owns the port + the one-at-a-time chain and refuses to move write
+ * bytes without an explicit confirm+validated. A bad write can wedge the pedal
+ * (power-cycle to recover), so that gate is load-bearing.
  *
  * Needs window.PRST (prst.js) for device profiles + rebuild(). Chrome/Edge only.
  *
@@ -191,9 +193,36 @@
     return readActivePrst(hit ? hit.name : `slot${slot}`);
   }
 
+  // Gated raw sender for a pre-built, pre-validated write stream. Owns the port
+  // and the one-at-a-time chain, so writes can't race reads. All write gating
+  // (build/validate/WRITE_VERIFIED/confirm) lives in webmidi_write.js; this just
+  // refuses to move bytes without an explicit confirm+validated from that layer.
+  // Paces like Suite: one block, wait for the device ACK (shallow queue), repeat.
+  function _sendStream(packets, opts) {
+    assertReady();
+    const { confirm = false, validated = false, ackWaitMs = 150 } = opts || {};
+    if (!(confirm && validated)) throw new Error("refusing to send: _sendStream requires confirm && validated");
+    return serialize(async () => {
+      let acks = 0, pending = 0;
+      input.onmidimessage = (e) => { if (e.data[0] === 0xf0) pending++; };
+      try {
+        for (const w of packets) {
+          const before = pending;
+          output.send(w);
+          const t0 = performance.now();
+          while (performance.now() - t0 < ackWaitMs && pending === before) {
+            await new Promise((r) => setTimeout(r, 5));
+          }
+          if (pending > before) acks++;
+        }
+      } finally { input.onmidimessage = null; }
+      return { sent: packets.length, acks };
+    });
+  }
+
   root.WebMidiDevice = {
     connect, disconnect: () => { input = output = access = profile = namesCache = null; },
-    isConnected, device, readNames, selectSlot, readActivePrst, readSlotPrst,
+    isConnected, device, readNames, selectSlot, readActivePrst, readSlotPrst, _sendStream,
     // exposed for tests / the probe
     _codec: { crc8, buildRequest, toWire, nibDecode, reassemble, splitNames, findPort },
   };

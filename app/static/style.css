@@ -702,10 +702,14 @@ button:disabled {
   width: 100%;
   margin: 0.25rem 0 0;
 }
-/* toggle param = blue iOS-style pill switch (state is shown by the switch) */
+/* toggle param = blue iOS-style pill switch, inline to the right of the name */
+.param.editable.toggle {
+  flex-direction: row; align-items: center; justify-content: space-between; gap: 0.5rem;
+}
+.param.editable.toggle > .pname { float: none; }
 .param.toggle .pval { display: none; }
 .pswitch {
-  clear: both; position: relative; width: 36px; height: 20px; margin-top: 0.3rem;
+  position: relative; width: 36px; height: 20px; flex: none;
   border: none; border-radius: 999px; padding: 0; cursor: pointer;
   background: var(--track); transition: background 0.15s;
 }
@@ -842,7 +846,12 @@ input[type="range"]::-moz-range-thumb {
 }
 .chip.official { border-style: dashed; font-style: italic; }
 
-/* block header: plain "BLOCK · Type" label + a lighter model dropdown chip */
+/* block header: caret + plain "BLOCK · Type" label + a lighter model dropdown chip */
+.block-caret {
+  background: transparent; border: none; color: inherit; cursor: pointer;
+  font-size: 0.65rem; padding: 0; width: 0.9rem; flex: none; opacity: 0.85; line-height: 1;
+}
+.block-caret:hover { opacity: 1; }
 .block-label { font-weight: 800; font-size: 0.72rem; letter-spacing: 0.03em; white-space: nowrap; }
 .model-chip {
   display: inline-flex; align-items: center; gap: 0.3rem;

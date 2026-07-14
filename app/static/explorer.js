@@ -173,6 +173,7 @@
   }
 
   const expanded = new Set(); // preset slots currently expanded
+  const blockToggled = new Set(); // `${slot}:${blkIdx}` blocks flipped from their default expand state (active=open)
   const edits = new Map(); // slot -> {params:{blk:{alg:val}}, bypass:{blk:bool}, settings:{}, models:{blk:fxid}, override:{blk:{...}}}
   let allModels = {}; // block -> [selectable models w/ param defs] (for the model picker)
   let libEntries = []; // all block-library entries (grouped client-side by block)
@@ -445,9 +446,25 @@
       bd.className = `block-detail blk-${b.block.replace(/[^a-z]/gi, "").toLowerCase()}`;
       const active = e.bypass[blkIdx] !== undefined ? e.bypass[blkIdx] : b.active;
       if (!active) bd.classList.add("bypassed");
+      // active blocks open by default, bypassed collapsed; caret flips it (XOR)
+      const bkey = `${p.slot}:${blkIdx}`;
+      const showParams = active !== blockToggled.has(bkey);
+      if (!showParams) bd.classList.add("collapsed");
 
       const head = document.createElement("div");
       head.className = "block-detail-head";
+      const caret = document.createElement("button");
+      caret.type = "button";
+      caret.className = "block-caret";
+      caret.textContent = showParams ? "▾" : "▸";
+      caret.title = showParams ? "Collapse block" : "Expand block";
+      caret.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (blockToggled.has(bkey)) blockToggled.delete(bkey);
+        else blockToggled.add(bkey);
+        renderPresets();
+      });
+      head.appendChild(caret);
       // plain "BLOCK · Type" label + a separate lighter model dropdown chip
       const bd_ = blockDisplay(b.block);
       const labelText = b.type && b.type !== bd_ ? `${bd_} · ${b.type}` : bd_;
@@ -500,7 +517,7 @@
 
       if (pickerKey === `${p.slot}:${blkIdx}`) bd.appendChild(buildPicker(p, blkIdx, b));
 
-      if (b.params.length) {
+      if (b.params.length && showParams) {
         const grid = document.createElement("div");
         grid.className = "param-grid";
         b.params.forEach((pr) => {

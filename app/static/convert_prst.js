@@ -1,9 +1,31 @@
 "use strict";
 
-// Convert page: the GP-5 <-> GP-50 preset converter (the lower section). Talks to
-// /api/device/convert{,/inspect} (see app/api_device.py). File-only — no device
-// I/O. The NAM (A2 -> A1) section above is handled by app.js.
+// Convert page: the GP-5 <-> GP-50 preset converter (the lower section). Runs
+// fully client-side via window.PRST (app/static/prst.js) — a byte-for-byte port
+// of patch/convert.py, verified over the whole corpus (app/tests/test_prst_js.mjs).
+// No backend call, so this page works as a static host (the beta-2 target). The
+// NAM (A2 -> A1) section above is handled by app.js.
 (() => {
+  const PRST = window.PRST;
+
+  // Mirror of api_device._target_for: auto -> the opposite device.
+  const targetFor = (srcKey, target) =>
+    target === "auto" ? (srcKey === "gp50" ? "gp5" : "gp50") : target;
+
+  const readBytes = (file) =>
+    file.arrayBuffer().then((buf) => new Uint8Array(buf));
+
+  function downloadBytes(name, u8) {
+    const url = URL.createObjectURL(new Blob([u8], { type: "application/octet-stream" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
   const drop = document.getElementById("prst-drop");
   const input = document.getElementById("prst-input");
   const pickBtn = document.getElementById("prst-pick-btn");
@@ -49,14 +71,29 @@
       convertBtn.disabled = true;
       return;
     }
-    const fd = new FormData();
-    files.forEach((f) => fd.append("files", f, f.name));
-    fd.append("target", targetValue());
+    const target = targetValue();
     try {
-      const r = await fetch("/api/device/convert/inspect", { method: "POST", body: fd });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
-      inspected = data.files;
+      inspected = await Promise.all(
+        files.map(async (f) => {
+          const data = await readBytes(f);
+          let src;
+          try {
+            src = PRST.detect(data);
+          } catch (e) {
+            return { name: f.name, ok: false, error: e.message };
+          }
+          const tgtKey = targetFor(src.key, target);
+          const problems = PRST.checkConvertible(data, tgtKey);
+          return {
+            name: f.name,
+            ok: true,
+            source_key: src.key,
+            target_key: tgtKey,
+            same_device: src.key === tgtKey,
+            problems: problems.map((p) => ({ block_index: p.blockIndex, model: p.model })),
+          };
+        })
+      );
     } catch (e) {
       showError(`Could not inspect presets: ${e.message}`);
       return;
@@ -121,21 +158,25 @@
     if (!files.length) return;
     showError("");
     convertBtn.disabled = true;
-    const fd = new FormData();
-    files.forEach((f) => fd.append("files", f, f.name));
-    fd.append("target", targetValue());
-    fd.append("force", forceCb.checked ? "true" : "false");
+    const target = targetValue();
+    const force = forceCb.checked;
     try {
-      const r = await fetch("/api/device/convert", { method: "POST", body: fd });
-      if (!r.ok) {
-        let detail = `HTTP ${r.status}`;
-        try {
-          detail = (await r.json()).detail || detail;
-        } catch (_) {}
-        throw new Error(detail);
+      // Only the cross-device files are convertible; same-device files are skipped
+      // (the button is gated on there being at least one convertible file).
+      const jobs = [];
+      for (const f of files) {
+        const data = await readBytes(f);
+        const src = PRST.detect(data);
+        const tgtKey = targetFor(src.key, target);
+        if (src.key === tgtKey) continue;
+        const out = PRST.convert(data, tgtKey, { force });
+        const stem = f.name.toLowerCase().endsWith(".prst") ? f.name.slice(0, -5) : f.name;
+        jobs.push({ name: `${stem}__${PRST.profileFor(tgtKey).name}.prst`, bytes: out });
       }
-      const name = await window.UI.downloadResponse(r, "converted.prst");
-      window.UI.toast(`Downloaded ${name}`, "ok");
+      if (!jobs.length) throw new Error("nothing to convert");
+      jobs.forEach((j) => downloadBytes(j.name, j.bytes));
+      const label = jobs.length === 1 ? jobs[0].name : `${jobs.length} presets`;
+      window.UI.toast(`Downloaded ${label}`, "ok");
     } catch (e) {
       showError(e.message);
       window.UI.toast("Conversion failed", "err");

@@ -40,8 +40,15 @@ Use these terms exactly; they map 1:1 to modules and UI copy.
   between app/device_io.py and the MIDI subprocess scripts. Both sides import
   it; contract-tested without hardware.
 - **ui_core** (`app/static/ui_core.js`, `window.UI`) — page-agnostic frontend
-  primitives (toast, confirm/prompt modals, fetch helpers, downloads, slot
-  semantics). Preset Explorer and Device Inspector are its two adapters.
+  primitives (toast, confirm/prompt modals, fetch helpers, downloads, User-IR
+  threshold). Preset Explorer and Device Inspector are its two adapters.
+  Empty-slot truth and slot domains come from the backend inventory
+  (`patch.empty`, `inventory.domains`) — no frontend re-derives them.
+- **distill_protocol** (`a2a1/distill_protocol.py`) — the stdout token
+  contract (DISTILL_ESR:/FORMAT:) between app/engine.py and the a2a1 train
+  scripts. Both sides import it; contract-tested without torch.
+- **jsonstore** (`app/jsonstore.py`) — shared JSON-list persistence (atomic
+  tmp-swap + lock) under blocklib and templates_store.
 - **patchlib** (`app/patchlib.py`) — inventory + edit semantics layered on
   prst_format: catalog resolution, SnapTone identity, usage, clone/repoint.
 - **patch/** — hardened device-I/O runtime only; archived RE probes live in

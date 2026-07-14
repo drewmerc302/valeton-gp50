@@ -401,18 +401,23 @@ def facets() -> dict:
             if blk["type"]:
                 d["types"].add(blk["type"])
             if blk["model"]:
-                d["models"][blk["model"]] = blk.get(
-                    "official"
-                )  # model -> official|None
+                d["models"][blk["model"]] = {
+                    "official": blk.get("official"),
+                    "type": blk.get("type"),
+                }  # model -> {official|None, type|None}
     order = {b: i for i, b in enumerate(BLOCK_NAMES)}
     return {
         "blocks": [
             {
                 "block": b,
                 "types": sorted(blocks[b]["types"]),
-                # each model as {model, official} so the filter dropdown can show both
+                # each model carries official + type so the picker can narrow by type
                 "models": [
-                    {"model": m, "official": blocks[b]["models"][m]}
+                    {
+                        "model": m,
+                        "official": blocks[b]["models"][m]["official"],
+                        "type": blocks[b]["models"][m]["type"],
+                    }
                     for m in sorted(blocks[b]["models"])
                 ],
             }

@@ -78,25 +78,36 @@
     addBtn.textContent = "Add filter";
     addBtn.disabled = true;
 
-    function refresh() {
+    // (re)build the model dropdown, narrowed to the selected type ("any type"
+    // shows all). Called on both block change and type change.
+    function fillModels() {
       const fb = facets.blocks.find((b) => b.block === blockSel.value);
-      typeSel.innerHTML = "";
+      const wantType = typeSel.selectedIndex > 0 ? typeSel.value : null;
       modelSel.innerHTML = "";
-      fill(typeSel, ["any type", ...(fb ? fb.types : [])]);
-      // models carry an optional official name -> show "Device / Official"
       const anyOpt = document.createElement("option");
       anyOpt.textContent = "any model";
       anyOpt.value = "";
       modelSel.appendChild(anyOpt);
-      (fb ? fb.models : []).forEach((m) => {
-        const opt = document.createElement("option");
-        opt.value = m.model;
-        opt.textContent = m.official ? `${m.model} / ${m.official}` : m.model;
-        modelSel.appendChild(opt);
-      });
+      (fb ? fb.models : [])
+        .filter((m) => !wantType || m.type === wantType)
+        .forEach((m) => {
+          const opt = document.createElement("option");
+          opt.value = m.model;
+          // models carry an optional official name -> show "Device / Official"
+          opt.textContent = m.official ? `${m.model} / ${m.official}` : m.model;
+          modelSel.appendChild(opt);
+        });
+    }
+
+    function refresh() {
+      const fb = facets.blocks.find((b) => b.block === blockSel.value);
+      typeSel.innerHTML = "";
+      fill(typeSel, ["any type", ...(fb ? fb.types : [])]);
+      fillModels();
       addBtn.disabled = !fb;
     }
     blockSel.addEventListener("change", refresh);
+    typeSel.addEventListener("change", fillModels);
     addBtn.addEventListener("click", () => {
       if (!blockSel.value || blockSel.selectedIndex === 0) return;
       addFilter({

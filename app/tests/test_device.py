@@ -559,16 +559,18 @@ def test_repoint_engine_guards():
 
 
 def test_device_page_and_static_served():
-    # Variant A (default) + the two alternate layouts all serve and load the engine.
-    for route, marker in (
-        ("/device", 'id="st-grid"'),
-        ("/device-b", 'id="st-list"'),
-        ("/device-c", 'id="c-template"'),
-    ):
-        html = client.get(route).text
-        assert marker in html, f"{route} missing {marker}"
-        assert "device_core.js" in html, f"{route} missing DeviceCore"
-        assert 'id="build-btn"' in html or 'id="c-go"' in html
+    html = client.get("/device").text
+    assert 'id="st-grid"' in html
+    assert "device_core.js" in html, "missing DeviceCore"
+    assert 'id="build-btn"' in html
+    # make-a-template-from-preset entry point lives on the page
+    assert 'id="tmpl-new-btn"' in html
+    assert 'id="tmpl-modal"' in html
+    # focused on user tone management: no factory-cab section
+    assert 'id="cab-grid"' not in html
+    # the alternate layout variants were dropped
+    assert client.get("/device-b").status_code == 404
+    assert client.get("/device-c").status_code == 404
     # shared engine talks to the real API
     assert "/api/device" in client.get("/static/device_core.js").text
     assert "openBuildModal" in client.get("/static/device_core.js").text

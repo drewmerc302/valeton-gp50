@@ -1064,9 +1064,9 @@ input[type="range"]::-moz-range-thumb {
 .asset-card {
   border: 1px solid var(--border); border-radius: var(--radius); background: var(--card-bg);
   box-shadow: var(--shadow); padding: 0.75rem 0.85rem; display: flex; flex-direction: column;
-  gap: 0.5rem; cursor: pointer; transition: border-color 0.12s, transform 0.12s;
+  gap: 0.5rem; transition: border-color 0.12s;
 }
-.asset-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.asset-card:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .asset-card.sel { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent), var(--shadow); }
 .asset-card .ac-top { display: flex; align-items: center; gap: 0.5rem; }
 .asset-card .ac-slot {
@@ -1083,11 +1083,14 @@ input[type="range"]::-moz-range-thumb {
   background: color-mix(in srgb, var(--slider) 15%, transparent); color: var(--slider);
 }
 .usage-badge.unused { background: var(--chip); color: var(--muted); }
+.asset-card .ac-list,
 .asset-card .ac-build {
-  margin-left: auto; font: inherit; font-size: 0.76rem; font-weight: 700; cursor: pointer;
-  border: 1px solid var(--accent); color: var(--accent); background: transparent;
-  border-radius: 7px; padding: 0.25rem 0.6rem;
+  font: inherit; font-size: 0.76rem; font-weight: 700; cursor: pointer;
+  border-radius: 7px; padding: 0.25rem 0.6rem; background: transparent;
 }
+.asset-card .ac-list { margin-left: auto; border: 1px solid var(--border); color: var(--muted); }
+.asset-card .ac-list:hover { border-color: var(--muted); color: var(--text); }
+.asset-card .ac-build { border: 1px solid var(--accent); color: var(--accent); }
 .asset-card .ac-build:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 
 /* SnapTone cards get the NS accent stripe; user IRs the CAB stripe */
@@ -1097,14 +1100,25 @@ input[type="range"]::-moz-range-thumb {
 /* dependency drawer / usage list */
 .dep-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
 .dep-row {
-  display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.6rem;
-  border: 1px solid var(--border); border-radius: 8px; background: var(--bg); font-size: 0.85rem;
+  display: flex; align-items: center; gap: 0.7rem; padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg); font-size: 0.95rem;
 }
-.dep-row .dep-slot { font-weight: 800; color: var(--muted); font-size: 0.75rem; }
-.dep-row .dep-meta { margin-left: auto; color: var(--muted); font-size: 0.76rem; }
+.dep-row .dep-slot {
+  font-weight: 800; color: var(--accent); font-size: 0.85rem;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-radius: 6px; padding: 0.1rem 0.4rem;
+}
+.dep-row .dep-name { font-weight: 700; }
 .dep-empty { color: var(--muted); font-size: 0.85rem; padding: 0.4rem 0; }
 
 /* templates list */
+.tmpl-new {
+  display: block; width: 100%; text-align: left; font: inherit; font-size: 0.86rem;
+  font-weight: 700; cursor: pointer; color: var(--accent); background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 9px; padding: 0.55rem 0.7rem; margin-bottom: 0.4rem;
+}
+.tmpl-new:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .tmpl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
 .tmpl-row {
   display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.7rem;
@@ -1122,7 +1136,8 @@ input[type="range"]::-moz-range-thumb {
 .build-sub { margin: 0 0 1rem; color: var(--muted); font-size: 0.85rem; line-height: 1.4; }
 .build-field { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.8rem; font-size: 0.82rem; font-weight: 700; }
 .build-field small { color: var(--muted); font-weight: 500; }
-.build-field select {
+.build-field select,
+.build-field input {
   font: inherit; font-size: 0.88rem; font-weight: 500; padding: 0.45rem 0.55rem;
   border: 1px solid var(--border); border-radius: 8px; background: var(--card-bg); color: var(--text);
 }

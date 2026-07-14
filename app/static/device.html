@@ -14,9 +14,9 @@
         <div><div class="brand-name">GP-50 Suite</div><div class="brand-sub">Companion</div></div>
       </div>
       <div class="nav-pills">
-        <a href="/">Convert</a>
-        <a href="/device" class="active">Device Inspector</a>
         <a href="/explorer">Preset Explorer</a>
+        <a href="/device" class="active">Device Inspector</a>
+        <a href="/">Convert</a>
       </div>
       <div class="nav-spacer"></div>
       <button type="button" id="theme-toggle" class="theme-toggle">☾ Dark</button>
@@ -26,17 +26,11 @@
   <div class="page-head">
     <h1>Device Inspector</h1>
     <p class="subtitle">Your loaded captures &amp; cabs — see what each one is used by, and build gig-ready patches from them.</p>
-    <div class="variant-switch" style="margin-top:0.6rem">
-      <span class="vs-label">Layout:</span>
-      <a href="/device" class="active">A · Registry</a>
-      <a href="/device-b">B · Manager</a>
-      <a href="/device-c">C · Build</a>
-    </div>
   </div>
 
   <main class="explorer-main">
     <div class="device-bar" style="justify-content:flex-start">
-      <button type="button" id="sync-btn" class="scan-btn">⟳ Sync captures from device</button>
+      <button type="button" id="sync-btn" class="scan-btn">⟳ Sync SnapTones and IRs from device</button>
       <span id="sync-status" class="subtitle"></span>
       <div class="nav-spacer"></div>
       <button type="button" id="build-btn" class="scan-btn primary">＋ Build a patch from a capture</button>
@@ -66,18 +60,28 @@
       <div class="dc-section-head">
         <h2>Templates</h2><span class="count" id="tmpl-count"></span>
         <span class="spacer"></span>
-        <span class="subtitle" style="font-size:0.78rem">saved effects wrappers · create from a preset in Preset Explorer</span>
+        <span class="subtitle" style="font-size:0.78rem">saved effects wrappers</span>
       </div>
+      <button type="button" id="tmpl-new-btn" class="tmpl-new">＋ Make a template from a preset</button>
       <ul id="tmpl-list" class="tmpl-list"></ul>
-      <p id="tmpl-empty" class="tmpl-empty" hidden>No templates yet. Open <a href="/explorer">Preset Explorer</a>, pick a preset you like, and choose <b>★ Create template from</b> to save its effects chain here.</p>
+      <p id="tmpl-empty" class="tmpl-empty" hidden>No templates yet. Use <b>＋ Make a template from a preset</b> above, or choose <b>★ Create template from</b> on a preset in <a href="/explorer">Preset Explorer</a>.</p>
     </section>
-
-    <details class="card" style="padding:0.8rem 1rem">
-      <summary style="cursor:pointer;font-weight:800;font-size:0.95rem">Factory cabs <span class="count" id="cab-count" style="color:var(--muted);font-weight:600"></span></summary>
-      <p class="subtitle" style="margin:0.4rem 0 0.6rem">Built-in cabinet models (also in the Preset Explorer block picker). Shown for reference.</p>
-      <div id="cab-grid" class="asset-grid"></div>
-    </details>
   </main>
+
+  <div id="tmpl-modal" class="modal-overlay" hidden>
+    <div class="modal-card build-card">
+      <h2 class="build-title">Make a template from a preset</h2>
+      <p class="build-sub">Save a preset's whole effects chain as a reusable template. The capture it points at is swapped out at build time.</p>
+      <label class="build-field"><span>Preset <small>(the effects chain to save)</small></span>
+        <select id="tmpl-src"></select></label>
+      <label class="build-field"><span>Template name</span>
+        <input id="tmpl-name" type="text" maxlength="40" placeholder="e.g. Metal, 80s Clean" /></label>
+      <div class="modal-actions build-actions">
+        <button type="button" id="tmpl-cancel" class="modal-btn">Cancel</button>
+        <button type="button" id="tmpl-create" class="modal-btn primary">Save template</button>
+      </div>
+    </div>
+  </div>
 
   <script src="/static/theme.js"></script>
   <script src="/static/device_core.js"></script>

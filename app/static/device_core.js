@@ -85,8 +85,11 @@
     const p = state.patches.find((x) => x.slot === slot);
     return p ? p.name : `#${slot}`;
   };
+  // The backend resolves User IR slots to their real device names (bank_map);
+  // fall back to the generic label only when no name came through.
   function irLabel(it) {
-    return isUserIr(it) ? `User IR ${it.slot - USER_IR_BASE + 1}` : it.name;
+    if (it.name) return it.name;
+    return isUserIr(it) ? `User IR ${it.slot - USER_IR_BASE + 1}` : `Cab #${it.slot}`;
   }
 
   async function sync() {
@@ -239,12 +242,6 @@
     sel.appendChild(g2);
   }
 
-  function chainText(p) {
-    return p.uses_snaptone
-      ? `N→S: ${p.snaptone_name}`
-      : `${p.amp_name || "?"} · ${p.ir_name || "?"}`;
-  }
-
   function openUsageModal(kind, slot) {
     ensureUi();
     const ov = document.getElementById("dc-usage");
@@ -263,8 +260,7 @@
     patches.forEach((p) => {
       const li = document.createElement("li");
       li.className = "dep-row";
-      li.innerHTML = `<span class="dep-slot">#${p.slot}</span><span>${p.name}</span>` +
-        `<span class="dep-meta">${chainText(p)}</span>`;
+      li.innerHTML = `<span class="dep-slot">#${p.slot}</span><span class="dep-name">${p.name}</span>`;
       list.appendChild(li);
     });
     buildBtn.hidden = kind !== "snaptone";

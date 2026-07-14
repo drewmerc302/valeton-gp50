@@ -52,16 +52,6 @@ def explorer_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "explorer.html")
 
 
-@router.get("/device-b", response_class=FileResponse)
-def device_page_b() -> FileResponse:
-    return FileResponse(STATIC_DIR / "device-b.html")
-
-
-@router.get("/device-c", response_class=FileResponse)
-def device_page_c() -> FileResponse:
-    return FileResponse(STATIC_DIR / "device-c.html")
-
-
 app.include_router(router)
 app.include_router(api_router)
 app.include_router(device_api_router)

@@ -26,19 +26,21 @@
     const foot = document.createElement("div");
     foot.className = "ac-foot";
     foot.appendChild(usageBadge(kind, it.slot));
+    const list = document.createElement("button");
+    list.type = "button";
+    list.className = "ac-list";
+    list.textContent = "List Presets";
+    list.addEventListener("click", () => DC.openUsageModal(kind, it.slot));
+    foot.appendChild(list);
     if (kind === "snaptone") {
       const build = document.createElement("button");
       build.type = "button";
       build.className = "ac-build";
       build.textContent = "Build →";
-      build.addEventListener("click", (e) => {
-        e.stopPropagation();
-        DC.openBuildModal({ snaptoneSlot: it.slot });
-      });
+      build.addEventListener("click", () => DC.openBuildModal({ snaptoneSlot: it.slot }));
       foot.appendChild(build);
     }
     card.append(top, foot);
-    card.addEventListener("click", () => DC.openUsageModal(kind, it.slot));
     return card;
   }
 
@@ -77,12 +79,50 @@
     const s = DC.state;
     $("st-count").textContent = `(${s.snaptones.length})`;
     $("ir-count").textContent = `(${s.userIrs.length})`;
-    $("cab-count").textContent = `(${s.factoryCabs.length})`;
     renderGrid($("st-grid"), "snaptone", s.snaptones, $("st-empty"));
     renderGrid($("ir-grid"), "ir", s.userIrs, $("ir-empty"));
-    renderGrid($("cab-grid"), "ir", s.factoryCabs, null);
     renderTemplates();
   }
+
+  // "Make a template from a preset" — save any preset's effects chain as a
+  // named template without a round-trip through the Preset Explorer.
+  function openTemplateModal() {
+    const ov = $("tmpl-modal");
+    const src = $("tmpl-src");
+    const name = $("tmpl-name");
+    const create = $("tmpl-create");
+    const cancel = $("tmpl-cancel");
+    src.innerHTML = "";
+    const named = DC.state.patches.filter((p) => !DC.isEmpty(p.slot));
+    (named.length ? named : DC.state.patches).forEach((p) => {
+      const o = document.createElement("option");
+      o.value = String(p.slot);
+      o.textContent = `#${p.slot} — ${p.name}`;
+      src.appendChild(o);
+    });
+    name.value = "";
+    ov.hidden = false;
+    name.focus();
+    const close = () => {
+      ov.hidden = true;
+      create.onclick = cancel.onclick = ov.onclick = null;
+    };
+    cancel.onclick = close;
+    ov.onclick = (e) => { if (e.target === ov) close(); };
+    create.onclick = async () => {
+      const n = name.value.trim() || (src.selectedOptions[0]?.textContent.split("— ")[1] ?? "");
+      if (!n) { DC.toast("Give the template a name.", "err"); return; }
+      create.disabled = true;
+      try {
+        await DC.createTemplate(n, Number(src.value));
+        DC.toast(`✓ Saved template "${n}".`, "ok");
+        close();
+      } catch (e) {
+        DC.toast(`Could not save template: ${e.message}`, "err");
+      } finally { create.disabled = false; }
+    };
+  }
+  $("tmpl-new-btn").addEventListener("click", openTemplateModal);
 
   $("build-btn").addEventListener("click", () => DC.openBuildModal({}));
   $("sync-btn").addEventListener("click", async () => {

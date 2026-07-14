@@ -1,24 +1,30 @@
 #!/usr/bin/env python3
-"""Regenerate patch/fxid_ring.json (fxid -> model metadata) from Valeton Suite's
-module50_data.json. Includes `origin` = the official gear reference (e.g. Green OD
--> "Ibanez TS808"), used by the explorer's "official names" toggle. Cabs/reverbs
-have no origin and stay as their device name."""
+"""Regenerate the fxid -> model metadata rings from Valeton Suite's asset data.
+Builds one ring per device: fxid_ring.json from module50_data.json (GP-50) and
+fxid_ring_gp5.json from module_data.json (GP-5). The GP-5 catalog is a strict
+subset of the GP-50's. `origin` = the official gear reference (e.g. Green OD ->
+"Ibanez TS808"), used by the explorer's "official names" toggle."""
 
 import json
 import os
 import re
 
-SUITE = (
+SUITE_DIR = (
     "/Applications/Valeton Suite.app/Contents/Frameworks/App.framework"
-    "/Versions/A/Resources/flutter_assets/assets/data/module50_data.json"
+    "/Versions/A/Resources/flutter_assets/assets/data"
 )
-OUT = os.path.join(os.path.dirname(__file__), "fxid_ring.json")
+# (source asset filename, output ring filename) per device
+RINGS = [
+    ("module50_data.json", "fxid_ring.json"),  # GP-50
+    ("module_data.json", "fxid_ring_gp5.json"),  # GP-5
+]
 
 
 def clean_origin(o: str) -> str:
     if not o:
         return ""
     o = o.split("\n")[0].strip()  # drop "XTOMP/Ampero Name: ..." 2nd line
+    o = re.sub(r"^Original:\s*", "", o).strip()  # newer Suite data prefixes "Original:"
     o = re.sub(r"\s*\(MIJ\)\s*$", "", o).strip()  # drop trailing "(MIJ)" noise
     if o.lower() in ("original", "n/a", "none", "-"):  # not a real gear reference
         return ""
@@ -83,8 +89,8 @@ def params_of(entry: dict) -> list:
     return out
 
 
-def main():
-    d = json.load(open(SUITE))
+def build_ring(src_name: str) -> dict:
+    d = json.load(open(os.path.join(SUITE_DIR, src_name)))
     ring = {}
     for m in d["modules"]:
         for e in m["module"]:
@@ -100,13 +106,30 @@ def main():
                 "origin": resolve_origin(e),
                 "params": params_of(e),
             }
-    json.dump({str(k): v for k, v in ring.items()}, open(OUT, "w"))
-    withorigin = sum(1 for v in ring.values() if v["origin"])
-    withparams = sum(1 for v in ring.values() if v["params"])
-    print(
-        f"wrote {OUT}: {len(ring)} models, {withorigin} origins, {withparams} with params"
-    )
+    return ring
+
+
+def main(only: str = "all"):
+    """Rebuild the model rings. `only` = 'gp50' | 'gp5' | 'all'. NOTE: a fresh
+    GP-50 build reflects the *currently installed* Valeton Suite data, which can
+    drift from the committed fxid_ring.json (origin coverage changes between Suite
+    versions) — rebuild it deliberately, not as a side effect."""
+    targets = {"gp50": RINGS[0:1], "gp5": RINGS[1:2], "all": RINGS}.get(only)
+    if targets is None:
+        raise SystemExit(f"unknown target {only!r} (gp50|gp5|all)")
+    for src_name, out_name in targets:
+        out = os.path.join(os.path.dirname(__file__), out_name)
+        ring = build_ring(src_name)
+        json.dump({str(k): v for k, v in ring.items()}, open(out, "w"))
+        withorigin = sum(1 for v in ring.values() if v["origin"])
+        withparams = sum(1 for v in ring.values() if v["params"])
+        print(
+            f"wrote {out}: {len(ring)} models, {withorigin} origins, "
+            f"{withparams} with params"
+        )
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    main(sys.argv[1] if len(sys.argv) > 1 else "all")

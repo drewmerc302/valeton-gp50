@@ -47,6 +47,8 @@
     state.factoryCabs = (inv.irs || []).filter((it) => !isUserIr(it));
     state.patches = inv.patches || [];
     state.source = inv.source || "";
+    state.device = inv.device || null;
+    UI.setDeviceBadge(inv.device);
     try {
       state.templates = (await jget("/templates")).templates || [];
     } catch { state.templates = []; }

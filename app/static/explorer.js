@@ -855,6 +855,7 @@
     ]);
     patches = inv.patches || [];
     facets = fac;
+    UI.setDeviceBadge(inv.device);
   }
 
   // --- device header: empty-state hero (no data) vs "last scan · rescan" bar ----

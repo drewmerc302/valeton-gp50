@@ -11,11 +11,13 @@ from __future__ import annotations
 import io
 import zipfile
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app import blocklib, device_io, patchlib, templates_store
+from patch import convert as prst_convert
+from patch import prst_format
 
 router = APIRouter(prefix="/api/device")
 
@@ -64,6 +66,7 @@ def sync() -> dict:
 def inventory() -> dict:
     return {
         "source": "exported patches (presetExports/) — not a live device read",
+        "device": patchlib.device(),  # {key, name, usb_pid, prst_len} — detected
         "snaptones": patchlib.all_snaptones(),
         "irs": patchlib.all_irs(),
         "patches": patchlib.all_patches(),
@@ -333,4 +336,94 @@ def edit(req: EditRequest) -> Response:
         data,
         media_type="application/octet-stream",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+# --- GP-5 <-> GP-50 preset conversion --------------------------------------------
+
+
+def _target_for(source_key: str, target: str) -> str:
+    """Resolve target='auto' to the opposite device of the source."""
+    if target == "auto":
+        return "gp5" if source_key == "gp50" else "gp50"
+    return target
+
+
+@router.post("/convert/inspect")
+async def convert_inspect(
+    files: list[UploadFile] = File(...),
+    target: str = Form("auto"),
+) -> dict:
+    """Detect each uploaded .prst's device and report what a conversion WOULD do
+    (target device + any blocks with no equivalent). Returns no file data — the UI
+    uses this to preview a batch before committing."""
+    out = []
+    for f in files:
+        data = await f.read()
+        try:
+            src = prst_format.detect(data)
+        except ValueError as e:
+            out.append({"name": f.filename, "ok": False, "error": str(e)})
+            continue
+        tgt_key = _target_for(src.key, target)
+        problems = prst_convert.check_convertible(data, tgt_key)
+        out.append(
+            {
+                "name": f.filename,
+                "ok": True,
+                "source_key": src.key,
+                "source_name": src.name,
+                "patch_name": prst_format.read_name(data),
+                "target_key": tgt_key,
+                "target_name": prst_format.profile_for(tgt_key).name,
+                "same_device": src.key == tgt_key,
+                "problems": [
+                    {"block_index": p.block_index, "model": p.model} for p in problems
+                ],
+            }
+        )
+    return {"files": out}
+
+
+@router.post("/convert")
+async def convert_prst(
+    files: list[UploadFile] = File(...),
+    target: str = Form("auto"),
+    force: bool = Form(False),
+) -> Response:
+    """Convert uploaded .prst files between GP-5 and GP-50. target='auto' sends each
+    file to the opposite device. One file -> a .prst; many -> a .zip. A lossy
+    GP-50 -> GP-5 (a GP-50-only model) is refused with 400 unless force=true."""
+    if target not in ("auto", "gp5", "gp50"):
+        raise HTTPException(400, f"bad target {target!r} (auto|gp5|gp50)")
+    outs: list[tuple[str, bytes]] = []
+    for f in files:
+        data = await f.read()
+        try:
+            src = prst_format.detect(data)
+            tgt_key = _target_for(src.key, target)
+            conv = prst_convert.convert(data, tgt_key, force=force)
+        except (ValueError, prst_convert.ConversionError) as e:
+            raise HTTPException(400, f"{f.filename}: {e}")
+        stem = (f.filename or "patch").rsplit("/", 1)[-1]
+        if stem.lower().endswith(".prst"):
+            stem = stem[:-5]
+        tgt_name = prst_format.profile_for(tgt_key).name
+        outs.append((f"{stem}__{tgt_name}.prst", conv))
+
+    if len(outs) == 1:
+        fname, data = outs[0]
+        return Response(
+            data,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fname, data in outs:
+            zf.writestr(fname, data)
+    return Response(
+        buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="converted.zip"'},
     )

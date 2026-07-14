@@ -28,12 +28,12 @@ scripts (.venv-midi) alike.
 from __future__ import annotations
 
 import struct
-from typing import Optional
+from typing import NamedTuple, Optional
 
-PRST_LEN = 552
-BODY_LEN = 511
+PRST_LEN = 552  # GP-50 (the default device); GP-5 is 507 — see DEVICES below
+BODY_LEN = 511  # GP-50 body (PRST_LEN - BODY_OFF)
 
-HEADER = bytes.fromhex("47502d3530000000000000000000000000000100")  # [0x00:0x14]
+HEADER = bytes.fromhex("47502d3530000000000000000000000000000100")  # GP-50 [0x00:0x14]
 CRC_OFF = 0x14
 SENTINEL = b"\xff\xff\xff\xff"  # [0x15:0x19]
 NAME_OFF = 0x19
@@ -43,11 +43,71 @@ BODY_OFF = 0x29  # NAME_OFF + NAME_LEN
 REC_MODELS = bytes([0x03, 0x30, 0x28, 0x00])
 REC_BYPASS = bytes([0x01, 0x30, 0x04, 0x00])
 REC_PARAMS = bytes([0x04, 0x30, 0x40, 0x01])
-FS_TRAILER = bytes([0x03, 0x00, 0x0A, 0x00])
-SETTINGS_OFF = 0x55  # first group-0x20 patch-settings record
+FS_TRAILER = bytes(
+    [0x03, 0x00, 0x0A, 0x00]
+)  # GP-50 trailer magic (GP-5 is 03 00 08 00)
+SETTINGS_OFF = (
+    0x55  # first group-0x20 patch-settings record (same offset on both devices)
+)
 
 N_BLOCKS = 10
 N_PARAM_SLOTS = 80  # N_BLOCKS x 8
+
+
+# --- device profiles ----------------------------------------------------------
+# The GP-5 and GP-50 share this .prst container, the SysEx protocol, and the
+# effect catalog (GP-5's catalog is a strict subset of the GP-50's). The three
+# things that differ per device are captured here: the 20-byte header, the total
+# file length, and the 4-byte device tag inside the 0xFF block. Everything else
+# (record magics, CRC, name codec, the 390-byte 0x02 tone block) is identical, so
+# the parsing functions below are already device-agnostic.
+
+HEADER_GP50 = HEADER
+HEADER_GP5 = bytes.fromhex("47502d3500000000000000000000000000000100")  # "GP-5\0"
+DEVTAG_GP50 = bytes.fromhex("47503530")  # "GP50", 0xFF-block bytes [12:16]
+DEVTAG_GP5 = bytes.fromhex("0a454d51")  # GP-5 device signature
+
+
+class DeviceProfile(NamedTuple):
+    key: str  # stable id: "gp50" | "gp5"
+    name: str  # display / factory-default patch name: "GP-50" | "GP-5"
+    header: bytes  # 20-byte fixed header ([0x00:0x14])
+    prst_len: int  # full .prst byte length
+    devtag: bytes  # 4-byte tag inside the 0xFF block
+    ring_file: str  # model catalog filename under patch/
+    midi_port: str  # rtmidi port-name match for the live device
+    usb_pid: int  # USB idProduct (vendor is 0x84EF on both)
+
+    @property
+    def body_len(self) -> int:
+        return self.prst_len - BODY_OFF
+
+
+GP50 = DeviceProfile(
+    "gp50", "GP-50", HEADER_GP50, 552, DEVTAG_GP50, "fxid_ring.json", "GP-50", 0x018A
+)
+GP5 = DeviceProfile(
+    "gp5", "GP-5", HEADER_GP5, 507, DEVTAG_GP5, "fxid_ring_gp5.json", "GP-5", 0x0184
+)
+DEVICES = {p.key: p for p in (GP50, GP5)}
+
+
+def profile_for(key: str) -> DeviceProfile:
+    try:
+        return DEVICES[key]
+    except KeyError:
+        raise ValueError(f"unknown device {key!r} (known: {sorted(DEVICES)})")
+
+
+def detect(prst: bytes) -> DeviceProfile:
+    """Identify a .prst's device from its header (then length as a fallback)."""
+    for p in DEVICES.values():
+        if prst[: len(p.header)] == p.header:
+            return p
+    for p in DEVICES.values():
+        if len(prst) == p.prst_len:
+            return p
+    raise ValueError(f"unrecognized .prst (len {len(prst)}, header {prst[:6].hex()})")
 
 
 # --- CRC (shared by the file format and the SysEx wire packets) ---------------
@@ -68,9 +128,17 @@ def refix_crc(b: bytearray) -> None:
     b[CRC_OFF] = crc8(bytes(b[CRC_OFF + 1 :]))
 
 
-def check_length(prst: bytes) -> None:
-    if len(prst) != PRST_LEN:
-        raise ValueError(f"expected a {PRST_LEN}-byte .prst, got {len(prst)}")
+def check_length(prst: bytes, profile: Optional[DeviceProfile] = None) -> None:
+    """Validate a .prst's length. With no profile, accept any known device;
+    with one, require exactly that device's length."""
+    if profile is not None:
+        if len(prst) != profile.prst_len:
+            raise ValueError(
+                f"expected a {profile.prst_len}-byte {profile.name} .prst, "
+                f"got {len(prst)}"
+            )
+        return
+    detect(prst)  # raises ValueError if the length/header matches no known device
 
 
 # --- name codec ----------------------------------------------------------------
@@ -87,11 +155,14 @@ def write_name(b: bytearray, name: str) -> None:
     )
 
 
-def rebuild(name: str, body: bytes) -> bytes:
-    """Full .prst from a device read: name (0x40 read) + 511-byte body (0x41)."""
-    if len(body) != BODY_LEN:
-        raise ValueError(f"expected a {BODY_LEN}-byte body, got {len(body)}")
-    out = bytearray(HEADER + b"\x00" + SENTINEL + b"\0" * NAME_LEN + body)
+def rebuild(name: str, body: bytes, profile: DeviceProfile = GP50) -> bytes:
+    """Full .prst from a device read: name (0x40 read) + body (0x41). Defaults to
+    GP-50; pass profile=GP5 for a 466-byte GP-5 body."""
+    if len(body) != profile.body_len:
+        raise ValueError(
+            f"expected a {profile.body_len}-byte {profile.name} body, got {len(body)}"
+        )
+    out = bytearray(profile.header + b"\x00" + SENTINEL + b"\0" * NAME_LEN + body)
     write_name(out, name)
     refix_crc(out)
     return bytes(out)
@@ -158,7 +229,14 @@ def params_offset(b: bytes) -> int:
     return i + 4 if i >= 0 else -1
 
 
+FS_TRAILER_GP5 = bytes([0x03, 0x00, 0x08, 0x00])  # GP-5 trailer (8-byte payload)
+
+
 def fs_offset(b: bytes) -> int:
-    """Offset of the footswitch mask pair ([FS1 u32][FS2 u32]) in the trailer."""
-    i = b.rfind(FS_TRAILER)
-    return i + 4 if i >= 0 else -1
+    """Offset of the footswitch mask pair ([FS1 u32][FS2 u32]) in the trailer.
+    Handles both the GP-50 (10-byte) and GP-5 (8-byte) trailer records."""
+    for magic in (FS_TRAILER, FS_TRAILER_GP5):
+        i = b.rfind(magic)
+        if i >= 0:
+            return i + 4
+    return -1

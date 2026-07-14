@@ -1,10 +1,11 @@
-"""Real GP-50 inventory, parsed from the exported patch set (presetExports/).
+"""Real device inventory, parsed from the exported patch set (presetExports/).
 
-Replaces the old mock in device_stub. No device I/O: reads the 100 exported
-.prst files + patch/fxid_ring.json (the model catalog decoded from Valeton
-Suite). The .prst byte layout itself lives in patch/prst_format.py — this
-module owns the *meaning* layered on top: model catalog resolution, SnapTone
-identity, inventory, and edits.
+Device-aware: the source dir's presets are detected as GP-50 or GP-5 (see
+_device()) and the matching model catalog is loaded (fxid_ring.json /
+fxid_ring_gp5.json, decoded from Valeton Suite). No device I/O: reads the
+exported .prst files. The .prst byte layout itself lives in patch/prst_format.py
+— this module owns the *meaning* layered on top: model catalog resolution,
+SnapTone identity, inventory, and edits.
 
 A patch references its blocks by device SLOT / model index, not by identity:
 model record = [modelIndex:u8][00 00][category:u8], and fxid = (category<<24)|idx.
@@ -31,8 +32,9 @@ from patch import prst_format as fmt
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXPORT_DIR = os.path.join(PROJECT_ROOT, "presetExports")
 SCAN_DIR = os.path.join(PROJECT_ROOT, "device_scan")  # populated by a live device scan
-FXID_RING = os.path.join(PROJECT_ROOT, "patch", "fxid_ring.json")
 BANK_MAP = os.path.join(PROJECT_ROOT, "patch", "bank_map.json")
+# the per-device model catalog (fxid_ring.json / fxid_ring_gp5.json) is resolved
+# in _ring() from the detected device — see _device()
 
 
 def _source_dir() -> str:
@@ -40,6 +42,26 @@ def _source_dir() -> str:
     if glob.glob(os.path.join(SCAN_DIR, "*.prst")):
         return SCAN_DIR
     return EXPORT_DIR
+
+
+@lru_cache(maxsize=1)
+def _device() -> "fmt.DeviceProfile":
+    """Which device the loaded presets belong to, detected from the first .prst
+    in the active source dir (device_scan/ or presetExports/). Defaults to GP-50
+    when the dir is empty or unrecognized."""
+    files = sorted(glob.glob(os.path.join(_source_dir(), "*.prst")))
+    for path in files:
+        try:
+            return fmt.detect(open(path, "rb").read())
+        except (ValueError, OSError):
+            continue
+    return fmt.GP50
+
+
+def device() -> dict:
+    """The detected device, for the inventory API (so the UI can label itself)."""
+    p = _device()
+    return {"key": p.key, "name": p.name, "usb_pid": p.usb_pid, "prst_len": p.prst_len}
 
 
 NS_CAT, CAB_CAT = 0x0F, 0x0A
@@ -56,8 +78,9 @@ USER_SNAPTONE_START = 50  # user SnapTone slots = 50..79
 
 
 def is_empty_name(name: str | None) -> bool:
-    """Factory default presets are all named "GP-50" — treated as empty slots."""
-    return (name or "").strip().upper() == "GP-50"
+    """Factory-default presets are named after the device ("GP-50" / "GP-5") —
+    treated as empty slots, safe to overwrite."""
+    return (name or "").strip().upper() == _device().name.upper()
 
 
 class SnapTone(TypedDict):
@@ -91,9 +114,12 @@ class Patch(TypedDict):
 
 @lru_cache(maxsize=1)
 def _ring() -> dict:
-    if not os.path.exists(FXID_RING):
+    """Model catalog for the detected device (GP-50 -> fxid_ring.json,
+    GP-5 -> fxid_ring_gp5.json)."""
+    path = os.path.join(PROJECT_ROOT, "patch", _device().ring_file)
+    if not os.path.exists(path):
         return {}
-    return {int(k): v for k, v in json.load(open(FXID_RING)).items()}
+    return {int(k): v for k, v in json.load(open(path)).items()}
 
 
 def _model_entry(category: int, fxlow: int) -> Optional[dict]:
@@ -354,10 +380,14 @@ def _load() -> tuple:
 
 
 def reload() -> None:
-    """Drop caches so the next read reflects an updated bank_map.json / exports."""
+    """Drop caches so the next read reflects an updated bank_map.json / exports /
+    a switch between a GP-50 and GP-5 source dir."""
     _load.cache_clear()
     _bank_labels.cache_clear()
     _bank_irs.cache_clear()
+    _device.cache_clear()
+    _ring.cache_clear()
+    _multi_type_blocks.cache_clear()
 
 
 def all_patches() -> list[Patch]:
@@ -577,8 +607,9 @@ def apply_edits(patch_slot: int, edits: dict) -> tuple[str, bytes]:
             ln = struct.unpack_from("<H", b, i + 2)[0]
             if ln not in (1, 2, 4):
                 break
-            if rid == 0x01 and "patch_vol" in s and ln == 1:
-                b[i + 4] = max(0, min(100, int(s["patch_vol"])))
+            if rid == 0x01 and "patch_vol" in s:  # 1-byte on GP-50, 4-byte on GP-5
+                vol = max(0, min(100, int(s["patch_vol"])))
+                b[i + 4 : i + 4 + ln] = vol.to_bytes(ln, "little")
             elif rid == 0x02 and "bpm" in s and ln == 4:
                 struct.pack_into("<i", b, i + 4, int(s["bpm"]))
             i += 4 + ln

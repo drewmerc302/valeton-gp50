@@ -128,6 +128,14 @@
     });
   }
 
+  // Fill the #device-badge chip (if present) with the detected device name.
+  function setDeviceBadge(device) {
+    const el = document.getElementById("device-badge");
+    if (!el || !device || !device.name) return;
+    el.textContent = device.name;
+    el.hidden = false;
+  }
+
   const confirmDialog = (message, okLabel = "Confirm") =>
     _modal({ message, okLabel });
 
@@ -149,5 +157,6 @@
     toast,
     confirmDialog,
     promptDialog,
+    setDeviceBadge,
   };
 })();

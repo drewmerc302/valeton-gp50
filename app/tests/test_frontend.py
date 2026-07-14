@@ -31,6 +31,22 @@ def test_index_serves_html_with_key_hooks():
         assert hook in html, f"missing hook: {hook}"
 
 
+def test_convert_page_has_preset_subtab_hooks():
+    """The Convert page splits into NAM (A2->A1) and Preset (GP-5<->GP-50) tabs."""
+    html = client.get("/").text
+    for hook in (
+        'id="convert-subtabs"',
+        'data-tab="nam"',
+        'data-tab="preset"',
+        'id="tab-preset"',
+        'id="prst-drop"',
+        'id="prst-target"',
+        'id="prst-convert-btn"',
+        "convert_prst.js",
+    ):
+        assert hook in html, f"missing preset-tab hook: {hook}"
+
+
 def test_format_070_present_and_enabled():
     # T1b wired up the 0.7.0 export path — the radio is no longer disabled.
     html = client.get("/").text

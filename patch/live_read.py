@@ -15,11 +15,30 @@ import time
 import mido
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from patch.prst_format import crc8  # noqa: E402 — shared CRC-8/0x07
+from patch.prst_format import GP5, GP50, crc8  # noqa: E402 — shared CRC-8/0x07
 
-PORT = "GP-50"
+PORT = "GP-50"  # fallback name; find_port() resolves the actual connected device
 READ_CMD = 0x01
 CATSEL = 0x12  # constant data[0] in Suite's name-read requests
+
+
+def find_port():
+    """Resolve the connected Valeton MIDI port -> (port_name, DeviceProfile).
+    The read protocol (selectors 0x40/0x41, CRC-8/0x07, nibble framing) is shared
+    by the GP-5 and GP-50, so a scan/sync works on either once the right port is
+    opened. Checks GP-50 first so its name isn't shadowed by the "GP-5" substring.
+    Falls back to (PORT, GP50) when mido can't enumerate ports."""
+    try:
+        names = mido.get_input_names()
+    except Exception:  # noqa: BLE001 — no backend/ports; keep the legacy default
+        return PORT, GP50
+    for name in names:
+        if "GP-50" in name:
+            return name, GP50
+    for name in names:
+        if "GP-5" in name:
+            return name, GP5
+    return PORT, GP50
 
 
 def build_request(selector):
@@ -65,7 +84,8 @@ def read_bank(selector, wait=2.0):
     _sent += 1
     buf = build_request(selector)
     replies = []
-    with mido.open_input(PORT) as inp, mido.open_output(PORT) as out:
+    port, _profile = find_port()
+    with mido.open_input(port) as inp, mido.open_output(port) as out:
         time.sleep(0.15)
         for _ in inp.iter_pending():
             pass  # drain

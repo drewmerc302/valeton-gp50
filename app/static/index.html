@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GP-50 Converter</title>
+  <title>Valeton Companion — Convert</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   <header>
     <nav class="top-nav">
       <div class="brand">
-        <div class="brand-logo">GP</div>
-        <div><div class="brand-name">GP-50 Suite</div><div class="brand-sub">Companion</div></div>
+        <div class="brand-logo">V</div>
+        <div><div class="brand-name">Valeton Companion</div><div class="brand-sub">GP-5 &amp; GP-50</div></div>
       </div>
       <div class="nav-pills">
         <a href="/explorer">Preset Explorer</a>
@@ -23,65 +23,108 @@
     </nav>
   </header>
   <div class="page-head">
-    <h1>GP-50 Converter</h1>
-    <p class="subtitle">NAM A2 &rarr; A1 batch conversion for the Valeton GP-50</p>
+    <h1>Convert</h1>
+    <p class="subtitle">NAM captures and presets for the Valeton GP-5 &amp; GP-50</p>
+    <div class="nav-pills subtabs" id="convert-subtabs" role="tablist">
+      <button type="button" class="active" data-tab="nam">NAM Capture &nbsp;<span class="hint">A2 → A1</span></button>
+      <button type="button" data-tab="preset">Preset &nbsp;<span class="hint">GP-5 ↔ GP-50</span></button>
+    </div>
   </div>
 
   <main>
-    <section class="card">
-      <h2>1. Files</h2>
-      <div id="drop-zone" class="drop-zone" tabindex="0">
-        <p>Drag &amp; drop <code>.nam</code> files here, or</p>
-        <button type="button" id="file-picker-btn">Choose files&hellip;</button>
-        <input type="file" id="file-input" accept=".nam" multiple hidden />
-      </div>
-      <ul id="file-list" class="file-list"></ul>
-    </section>
+    <!-- ============ NAM Capture: A2 -> A1 ============ -->
+    <div id="tab-nam" class="tab-panel">
+      <section class="card">
+        <h2>1. Files</h2>
+        <div id="drop-zone" class="drop-zone" tabindex="0">
+          <p>Drag &amp; drop <code>.nam</code> files here, or</p>
+          <button type="button" id="file-picker-btn">Choose files&hellip;</button>
+          <input type="file" id="file-input" accept=".nam" multiple hidden />
+        </div>
+        <ul id="file-list" class="file-list"></ul>
+      </section>
 
-    <section class="card">
-      <h2>2. Config</h2>
-      <div class="config-grid">
-        <div class="field">
-          <label>Output format</label>
-          <div class="format-toggle" id="format-toggle">
-            <label class="radio-pill">
-              <input type="radio" name="output_format" id="format-05x" value="0.5x" checked />
-              0.5.x (GP-50)
-            </label>
-            <label class="radio-pill">
-              <input type="radio" name="output_format" id="format-070" value="0.7.0" />
-              0.7.0 <span class="hint">(newer devices)</span>
-            </label>
+      <section class="card">
+        <h2>2. Config</h2>
+        <div class="config-grid">
+          <div class="field">
+            <label>Output format</label>
+            <div class="format-toggle" id="format-toggle">
+              <label class="radio-pill">
+                <input type="radio" name="output_format" id="format-05x" value="0.5x" checked />
+                0.5.x (GP-5 / GP-50)
+              </label>
+              <label class="radio-pill">
+                <input type="radio" name="output_format" id="format-070" value="0.7.0" />
+                0.7.0 <span class="hint">(newer devices)</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="epochs">Epochs</label>
+            <div class="epochs-row">
+              <input type="number" id="epochs" min="1" step="1" value="80" />
+              <button type="button" id="fast-preset">Fast (test)</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>DI reference</label>
+            <div id="di-info" class="readonly-field">Official v3_0_0 (default)</div>
           </div>
         </div>
+      </section>
 
-        <div class="field">
-          <label for="epochs">Epochs</label>
-          <div class="epochs-row">
-            <input type="number" id="epochs" min="1" step="1" value="80" />
-            <button type="button" id="fast-preset">Fast (test)</button>
-          </div>
+      <section class="card actions">
+        <button type="button" id="convert-btn" disabled>Convert</button>
+        <div id="error-banner" class="error-banner" role="alert" hidden></div>
+      </section>
+
+      <section class="card" id="results-section" hidden>
+        <h2>3. Progress</h2>
+        <div id="results"></div>
+      </section>
+    </div>
+
+    <!-- ============ Preset: GP-5 <-> GP-50 ============ -->
+    <div id="tab-preset" class="tab-panel" hidden>
+      <section class="card">
+        <h2>1. Presets</h2>
+        <div id="prst-drop" class="drop-zone" tabindex="0">
+          <p>Drag &amp; drop <code>.prst</code> presets here, or</p>
+          <button type="button" id="prst-pick-btn">Choose files&hellip;</button>
+          <input type="file" id="prst-input" accept=".prst" multiple hidden />
         </div>
+        <ul id="prst-list" class="file-list convert-list"></ul>
+      </section>
 
-        <div class="field">
-          <label>DI reference</label>
-          <div id="di-info" class="readonly-field">Official v3_0_0 (default)</div>
+      <section class="card">
+        <h2>2. Target device</h2>
+        <div class="format-toggle" id="prst-target">
+          <label class="radio-pill">
+            <input type="radio" name="prst_target" value="auto" checked />
+            Auto <span class="hint">(to the other device)</span>
+          </label>
+          <label class="radio-pill"><input type="radio" name="prst_target" value="gp50" /> → GP-50</label>
+          <label class="radio-pill"><input type="radio" name="prst_target" value="gp5" /> → GP-5</label>
         </div>
-      </div>
-    </section>
+        <label class="force-row" id="prst-force-row" hidden>
+          <input type="checkbox" id="prst-force" />
+          Force — drop blocks that have no equivalent on the target (GP-50-only models)
+        </label>
+      </section>
 
-    <section class="card actions">
-      <button type="button" id="convert-btn" disabled>Convert</button>
-      <div id="error-banner" class="error-banner" role="alert" hidden></div>
-    </section>
-
-    <section class="card" id="results-section" hidden>
-      <h2>3. Progress</h2>
-      <div id="results"></div>
-    </section>
+      <section class="card actions">
+        <button type="button" id="prst-convert-btn" disabled>Convert &amp; download</button>
+        <div id="prst-error" class="error-banner" role="alert" hidden></div>
+      </section>
+    </div>
   </main>
 
   <script src="/static/theme.js"></script>
+  <script src="/static/ui_core.js"></script>
   <script src="/static/app.js"></script>
+  <script src="/static/convert_prst.js"></script>
 </body>
 </html>

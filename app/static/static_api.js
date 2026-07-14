@@ -20,6 +20,15 @@
   const realFetch = root.fetch.bind(root);
   const LS_LIB = "valeton_blocklib", LS_TPL = "valeton_templates";
 
+  // Resolve the data dir relative to THIS script's URL, so the shim works whether
+  // it's served at /static/static_api.js (backend) or ./static_api.js (a static
+  // host mounted at root).
+  const DATA_BASE = (() => {
+    try { const s = document.currentScript && document.currentScript.src; if (s) return new URL("data/", s).href; } catch { /* fall through */ }
+    return "/static/data/";
+  })();
+  const dataUrl = (f) => new URL(f, DATA_BASE).href;
+
   // once the user has interacted, status checks may connect WebMIDI (needs a
   // gesture); before that, don't auto-prompt on page load.
   let userEngaged = false;
@@ -41,10 +50,10 @@
     if (store) return store;
     if (loading) return loading;
     loading = (async () => {
-      const snap = await realFetch("/static/data/presets.json").then((r) => r.json());
+      const snap = await realFetch(dataUrl("presets.json")).then((r) => r.json());
       const profile = PRST.profileFor(snap.device || "gp50");
-      const ring = await realFetch(`/static/data/${profile.ringFile}`).then((r) => r.json());
-      const bankMap = await realFetch("/static/data/bank_map.json").then((r) => r.ok ? r.json() : {}).catch(() => ({}));
+      const ring = await realFetch(dataUrl(profile.ringFile)).then((r) => r.json());
+      const bankMap = await realFetch(dataUrl("bank_map.json")).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
       const bytes = new Map(), names = new Map();
       for (const p of snap.presets) { bytes.set(p.slot, b64ToBytes(p.b64)); names.set(p.slot, p.name); }
       store = { profile, lib: PatchLib.make(ring, bankMap, profile), bytes, names };

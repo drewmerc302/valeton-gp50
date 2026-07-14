@@ -638,7 +638,7 @@
   async function pastePreset(target) {
     if (!clipboard) return;
     if (clipboard.slot === target.slot) return;
-    if (!confirm(`Overwrite slot ${target.slot} "${target.name}" with "${clipboard.name}" (from slot ${clipboard.slot})? Writes to the pedal. Close Valeton Suite first.`)) return;
+    if (!(await confirmDialog(`Overwrite slot ${target.slot} "${target.name}" with "${clipboard.name}" (from slot ${clipboard.slot})? Writes to the pedal. Close Valeton Suite first.`, "Paste"))) return;
     try {
       const r = await fetch("/api/device/write", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -654,7 +654,7 @@
 
   async function swapPreset(p, otherSlot) {
     if (otherSlot === p.slot) return;
-    if (!confirm(`Swap slot ${p.slot} "${p.name}" ⇄ slot ${otherSlot} "${slotName(otherSlot)}"? Non-destructive, but writes both to the pedal. Close Valeton Suite first.`)) return;
+    if (!(await confirmDialog(`Swap slot ${p.slot} "${p.name}" ⇄ slot ${otherSlot} "${slotName(otherSlot)}"? Non-destructive, but writes both to the pedal. Close Valeton Suite first.`, "Swap"))) return;
     try {
       const r = await fetch("/api/device/swap", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -718,7 +718,7 @@
       if (note) note.textContent = "Write cancelled: slot must be 0–99.";
       return;
     }
-    if (!confirm(`Overwrite device slot ${target} with "${p.name}"? This writes to the pedal.`)) return;
+    if (!(await confirmDialog(`Overwrite device slot ${target} with "${p.name}"? This writes to the pedal.`, "Overwrite"))) return;
     if (note) note.textContent = `Writing to slot ${target}…`;
     try {
       const r = await fetch("/api/device/write", {
@@ -872,6 +872,39 @@
     }
   }
 
+  // --- centered confirm modal (replaces native window.confirm) -----------------
+  // Returns a Promise<bool>. Enter = confirm, Esc / backdrop = cancel.
+  function confirmDialog(message, okLabel = "Confirm") {
+    return new Promise((resolve) => {
+      const overlay = $("confirm-modal");
+      const ok = $("confirm-ok");
+      const cancel = $("confirm-cancel");
+      $("confirm-msg").textContent = message;
+      ok.textContent = okLabel;
+      overlay.hidden = false;
+      ok.focus();
+      function cleanup(result) {
+        overlay.hidden = true;
+        ok.removeEventListener("click", onOk);
+        cancel.removeEventListener("click", onCancel);
+        overlay.removeEventListener("click", onBackdrop);
+        document.removeEventListener("keydown", onKey);
+        resolve(result);
+      }
+      const onOk = () => cleanup(true);
+      const onCancel = () => cleanup(false);
+      const onBackdrop = (e) => { if (e.target === overlay) cleanup(false); };
+      const onKey = (e) => {
+        if (e.key === "Enter") { e.preventDefault(); cleanup(true); }
+        else if (e.key === "Escape") { e.preventDefault(); cleanup(false); }
+      };
+      ok.addEventListener("click", onOk);
+      cancel.addEventListener("click", onCancel);
+      overlay.addEventListener("click", onBackdrop);
+      document.addEventListener("keydown", onKey);
+    });
+  }
+
   // --- scan all presets from the device (one at a time; no bulk read exists) -----
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -913,7 +946,7 @@
   const scanButtons = () => [$("scan-btn"), $("scan-btn-hero")].filter(Boolean);
 
   async function startScan() {
-    if (!confirm("Begin scan of all 100 presets?")) return;
+    if (!(await confirmDialog("Begin scan of all 100 presets?", "Begin scan"))) return;
     scanButtons().forEach((b) => (b.disabled = true));
     $("scan-progress").hidden = false;
     $("scan-fill").style.width = "0%";

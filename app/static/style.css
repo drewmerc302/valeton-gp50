@@ -478,6 +478,30 @@ button:disabled {
 .empty-hero h2 { margin: 0.2rem 0 0; font-size: 1.35rem; font-weight: 800; }
 .empty-hero p { margin: 0 0 0.6rem; color: var(--muted); font-size: 0.92rem; max-width: 460px; }
 
+/* centered confirmation modal (replaces the native left/right browser confirm) */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(2px);
+}
+.modal-overlay[hidden] { display: none; }
+.modal-card {
+  background: var(--card-bg); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 1.6rem 1.6rem 1.2rem; max-width: 400px; width: calc(100% - 2rem);
+  text-align: center;
+}
+.modal-msg { margin: 0 0 1.3rem; font-size: 0.98rem; line-height: 1.5; }
+.modal-actions { display: flex; justify-content: center; gap: 0.6rem; }
+.modal-btn {
+  font: inherit; font-size: 0.9rem; font-weight: 700; cursor: pointer;
+  border-radius: 8px; padding: 0.5rem 1.4rem;
+  border: 1px solid var(--border); background: var(--card-bg); color: var(--text);
+}
+.modal-btn:hover { border-color: var(--accent); }
+.modal-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.modal-btn.primary:hover { filter: brightness(1.08); }
+
 /* progress only appears while scanning, and stays compact */
 .scan-progress[hidden] { display: none; }
 .scan-progress { display: flex; align-items: center; gap: 0.6rem; justify-content: center; }

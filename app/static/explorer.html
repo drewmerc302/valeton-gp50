@@ -77,6 +77,17 @@
     </section>
   </main>
 
+  <!-- centered confirmation modal (replaces native confirm) -->
+  <div id="confirm-modal" class="modal-overlay" hidden>
+    <div class="modal-card">
+      <p id="confirm-msg" class="modal-msg"></p>
+      <div class="modal-actions">
+        <button type="button" id="confirm-cancel" class="modal-btn">Cancel</button>
+        <button type="button" id="confirm-ok" class="modal-btn primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/theme.js"></script>
   <script src="/static/explorer.js"></script>
 </body>

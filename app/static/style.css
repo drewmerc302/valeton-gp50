@@ -502,12 +502,20 @@ button:disabled {
 .modal-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 .modal-btn.primary:hover { filter: brightness(1.08); }
 
-/* progress only appears while scanning, and stays compact */
+/* progress only appears while scanning; fixed-width so the bar never moves as
+   the preset name / counter change length */
 .scan-progress[hidden] { display: none; }
-.scan-progress { display: flex; align-items: center; gap: 0.6rem; justify-content: center; }
-.scan-bar { width: 200px; height: 6px; border-radius: 999px; background: var(--track); overflow: hidden; }
+.scan-progress {
+  display: flex; align-items: center; gap: 0.75rem;
+  width: 460px; max-width: calc(100% - 3rem); margin: 0 auto;
+}
+.scan-bar { flex: none; width: 200px; height: 6px; border-radius: 999px; background: var(--track); overflow: hidden; }
 .scan-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.3s ease; }
-#scan-status { font-size: 0.8rem; }
+#scan-status {
+  flex: 1 1 auto; min-width: 0; font-size: 0.8rem; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
 
 .slot-actions {
   display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;

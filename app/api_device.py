@@ -52,6 +52,28 @@ def scan_status() -> dict:
     return st
 
 
+@router.get("/status")
+def status() -> dict:
+    """Is a Valeton device connected right now, and which one? Read-only; the
+    Explorer uses this to decide whether clicking a preset selects it on the pedal."""
+    return device_io.device_status()
+
+
+class SelectRequest(BaseModel):
+    slot: int  # device preset index 0..99
+
+
+@router.post("/select")
+def select(req: SelectRequest) -> dict:
+    """Select preset `slot` on the connected device (MIDI Program Change) and pull
+    its live state back into that slot's cache. Non-destructive — changes the active
+    patch, writes nothing to the device. Needs a device connected."""
+    result = device_io.select_patch(req.slot)
+    if result.get("cache_updated"):
+        patchlib.reload()  # so the next /inventory reflects the freshly-read slot
+    return result
+
+
 @router.post("/sync")
 def sync() -> dict:
     """Live-read the SnapTone catalog from the pedal and refresh the inventory.

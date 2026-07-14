@@ -399,6 +399,76 @@ def test_sync_endpoint_surfaces_device_error(monkeypatch):
     assert body["ok"] is False and "did not respond" in body["error"]
 
 
+def test_status_endpoint_reports_connection(monkeypatch):
+    from app import device_io
+
+    monkeypatch.setattr(
+        device_io,
+        "device_status",
+        lambda: {
+            "connected": True,
+            "device": {"key": "gp50", "name": "GP-50"},
+            "port": "GP-50",
+        },
+    )
+    body = client.get("/api/device/status").json()
+    assert body["connected"] is True and body["device"]["name"] == "GP-50"
+
+
+def test_select_endpoint_selects_and_reloads_on_refresh(monkeypatch):
+    from app import device_io, patchlib
+
+    seen = {}
+    monkeypatch.setattr(
+        device_io,
+        "select_patch",
+        lambda slot: (
+            seen.update(slot=slot)
+            or {
+                "ok": True,
+                "slot": slot,
+                "device": {"key": "gp50", "name": "GP-50"},
+                "cache_updated": True,
+            }
+        ),
+    )
+    reloaded = {"n": 0}
+    monkeypatch.setattr(
+        patchlib, "reload", lambda: reloaded.update(n=reloaded["n"] + 1)
+    )
+    body = client.post("/api/device/select", json={"slot": 7}).json()
+    assert body["ok"] and body["slot"] == 7 and seen["slot"] == 7
+    assert reloaded["n"] == 1  # cache_updated -> inventory reload
+
+
+def test_select_endpoint_no_reload_when_cache_unchanged(monkeypatch):
+    from app import device_io, patchlib
+
+    monkeypatch.setattr(
+        device_io,
+        "select_patch",
+        lambda slot: {"ok": True, "slot": slot, "cache_updated": False},
+    )
+    reloaded = {"n": 0}
+    monkeypatch.setattr(
+        patchlib, "reload", lambda: reloaded.update(n=reloaded["n"] + 1)
+    )
+    client.post("/api/device/select", json={"slot": 3})
+    assert reloaded["n"] == 0
+
+
+def test_select_endpoint_surfaces_no_device(monkeypatch):
+    from app import device_io
+
+    monkeypatch.setattr(
+        device_io,
+        "select_patch",
+        lambda slot: {"ok": False, "slot": slot, "error": "no Valeton device found"},
+    )
+    body = client.post("/api/device/select", json={"slot": 2}).json()
+    assert body["ok"] is False and "no Valeton device" in body["error"]
+
+
 def test_explorer_page_served():
     html = client.get("/explorer").text
     assert 'id="preset-list"' in html and 'id="filter-bar"' in html
@@ -406,6 +476,7 @@ def test_explorer_page_served():
     js = client.get("/static/explorer.js").text
     assert "/api/device" in js
     assert "gp50_savedFilters" in js  # saved filter sets persist to localStorage
+    assert 'id="device-conn"' in html  # live-connection indicator for click-to-select
 
 
 def test_shared_ui_core_loaded_by_both_pages():

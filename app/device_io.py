@@ -26,6 +26,8 @@ MIDI_PY = os.path.join(PROJECT_ROOT, ".venv-midi", "bin", "python")
 READER = os.path.join(PROJECT_ROOT, "patch", "read_bank_map.py")
 WRITER = os.path.join(PROJECT_ROOT, "patch", "write_patch.py")
 SCANNER = os.path.join(PROJECT_ROOT, "patch", "scan_bank.py")
+SELECTOR = os.path.join(PROJECT_ROOT, "patch", "select_patch.py")
+STATUS = os.path.join(PROJECT_ROOT, "patch", "device_status.py")
 SCAN_DIR = os.path.join(PROJECT_ROOT, "device_scan")
 
 _lock = threading.Lock()
@@ -73,6 +75,69 @@ def sync_snaptones(timeout: float = 25.0) -> dict:
         result = proto.parse_result(proc.stdout, fallback_error="read failed")
         if not result.get("ok"):
             result["error"] = proto.friendly_error(str(result.get("error", "")))
+        return result
+    finally:
+        _lock.release()
+
+
+def device_status(timeout: float = 6.0) -> dict:
+    """Is a Valeton device connected, and which? Read-only (enumerates MIDI ports,
+    sends nothing), so it takes no device lock. Returns {connected, device, port}.
+    Never raises."""
+    if not os.path.exists(MIDI_PY):
+        return {"connected": False, "device": None, "port": None}
+    try:
+        proc = subprocess.run(
+            [MIDI_PY, STATUS],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return {"connected": False, "device": None, "port": None}
+    result = proto.parse_result(proc.stdout, fallback_error="status failed")
+    # normalize: a parse miss (no JSON) reads as "not connected"
+    if "connected" not in result:
+        return {"connected": False, "device": None, "port": None}
+    return result
+
+
+def select_patch(slot: int, timeout: float = 12.0, refresh: bool = True) -> dict:
+    """Select preset `slot` (0..99) on the connected device via Program Change.
+    Non-destructive (no confirm/gate). With refresh=True, also read the preset's
+    live state back and refresh that one slot's device_scan cache — so clicking a
+    preset shows its current settings without a full rescan (only when a scan cache
+    already exists). Serialized against other device ops. Returns {ok, slot,
+    device, cache_updated|error}. Never raises."""
+    if not 0 <= slot <= patchlib.PATCH_SLOT_MAX:
+        return {"ok": False, "slot": slot, "error": f"slot {slot} out of range (0..99)"}
+    if not _lock.acquire(blocking=False):
+        return {"ok": False, "slot": slot, "error": "a device operation is running"}
+    try:
+        if not os.path.exists(MIDI_PY):
+            return {"ok": False, "slot": slot, "error": "MIDI environment not found"}
+        args = [MIDI_PY, SELECTOR, "--slot", str(slot)]
+        if refresh:
+            args.append("--refresh")
+        try:
+            proc = subprocess.run(
+                args, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=timeout
+            )
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "slot": slot, "error": "device did not respond"}
+        result = proto.parse_result(proc.stdout, fallback_error="select failed")
+        if not result.get("ok"):
+            result["error"] = proto.friendly_error(str(result.get("error", "")))
+            return result
+        # a live body came back -> refresh that one slot's cache (guarded: only if a
+        # full scan cache exists). Never leak the base64 body to the API caller.
+        import base64
+
+        b64 = result.pop("prst_b64", None)
+        result["cache_updated"] = bool(b64) and _cache_write(
+            slot, base64.b64decode(b64)
+        )
         return result
     finally:
         _lock.release()
@@ -144,19 +209,21 @@ def write_patch(
         _lock.release()
 
 
-def _cache_write(slot: int, prst: bytes) -> None:
-    """Mirror a device write into the device_scan/ cache so the Explorer reflects it
-    without a re-scan. No-op unless a scan cache already exists."""
+def _cache_write(slot: int, prst: bytes) -> bool:
+    """Mirror a device read/write into the device_scan/ cache so the Explorer
+    reflects it without a full re-scan. No-op (returns False) unless a scan cache
+    already exists — a single slot can't seed the file-based inventory alone."""
     import glob
 
     if not glob.glob(os.path.join(SCAN_DIR, "*.prst")):
-        return
+        return False
     name = prst_format.read_name(prst) or f"slot{slot}"
     safe = "".join(c if c.isalnum() or c in " -_" else "_" for c in name)
     for old in glob.glob(os.path.join(SCAN_DIR, f"{slot:02d}-*.prst")):
         os.remove(old)
     with open(os.path.join(SCAN_DIR, f"{slot:02d}-{safe}.prst"), "wb") as f:
         f.write(prst)
+    return True
 
 
 def scan_status() -> dict:

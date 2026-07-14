@@ -659,6 +659,21 @@ button:disabled {
 }
 .preset-head { display: flex; align-items: center; gap: 0.7rem; padding: 0.8rem 1rem; cursor: pointer; }
 .preset-head:hover { background: var(--chip); }
+/* the preset currently selected on the connected pedal */
+.preset-active { border-color: var(--ok); box-shadow: 0 0 0 1px var(--ok), var(--shadow); }
+.preset-active > .preset-head { background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.badge.active-badge { background: var(--ok); color: #fff; font-weight: 700; }
+
+/* live device connection indicator in the device bar */
+.device-conn {
+  font: inherit; font-size: 0.8rem; font-weight: 700; cursor: pointer; flex: none;
+  border: 1px solid var(--border); background: var(--chip); color: var(--muted);
+  border-radius: 999px; padding: 0.3rem 0.75rem;
+}
+.device-conn.connected {
+  border-color: var(--ok); color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
 .caret { color: var(--muted); width: 0.9rem; display: inline-block; font-size: 0.75rem; }
 .preset-num { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 0.82rem; font-weight: 800; }
 .preset-name { font-weight: 700; font-size: 0.95rem; white-space: nowrap; flex: none; }

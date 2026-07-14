@@ -15,6 +15,7 @@
 
   let patches = [];
   let facets = { blocks: [] };
+  let inventoryDevice = null; // {key,name} the loaded presets belong to
   let filters = []; // {block, type|null, model|null}
 
   // N->S is the pedal's block name for the SnapTone slot; label it plainly.
@@ -201,6 +202,8 @@
   }
 
   const expanded = new Set(); // preset slots currently expanded
+  let activeSlot = null; // the preset currently SELECTED on the connected pedal
+  let deviceLive = { connected: false, device: null }; // /api/device/status
   const blockToggled = new Set(); // `${slot}:${blkIdx}` blocks flipped from their default expand state (active=open)
   const edits = new Map(); // slot -> {params:{blk:{alg:val}}, bypass:{blk:bool}, settings:{}, models:{blk:fxid}, override:{blk:{...}}}
   let allModels = {}; // block -> [selectable models w/ param defs] (for the model picker)
@@ -762,10 +765,13 @@
       const li = document.createElement("li");
       li.className = "preset-row";
       const isOpen = expanded.has(p.slot);
+      const isActive = p.slot === activeSlot;
+      if (isActive) li.classList.add("preset-active");
       const head = document.createElement("div");
       head.className = "preset-head";
       head.innerHTML =
         `<span class="preset-num">#${p.slot}</span> <span class="preset-name">${p.name}</span>` +
+        (isActive ? ' <span class="badge active-badge">● Active on pedal</span>' : "") +
         (p.uses_snaptone ? ' <span class="badge st">SnapTone</span>' : "");
       // full block chain, right-aligned, bypassed blocks dimmed (matches the Designer)
       const chips = document.createElement("div");
@@ -779,11 +785,7 @@
       caret.className = "caret";
       caret.textContent = isOpen ? "▾" : "▸";
       head.appendChild(caret);
-      head.addEventListener("click", () => {
-        if (expanded.has(p.slot)) expanded.delete(p.slot);
-        else expanded.add(p.slot);
-        renderPresets();
-      });
+      head.addEventListener("click", () => selectPreset(p));
       li.appendChild(head);
       if (isOpen) {
         li.appendChild(renderDetail(p));
@@ -855,7 +857,81 @@
     ]);
     patches = inv.patches || [];
     facets = fac;
+    inventoryDevice = inv.device || null;
     UI.setDeviceBadge(inv.device);
+  }
+
+  // --- live device: connection status + click-to-select ----------------------
+
+  async function refreshDeviceStatus() {
+    const btn = $("device-conn");
+    try {
+      const st = await UI.jget("/api/device/status");
+      deviceLive = { connected: !!st.connected, device: st.device || null };
+    } catch {
+      deviceLive = { connected: false, device: null };
+    }
+    if (btn) {
+      const on = deviceLive.connected;
+      const name = deviceLive.device ? deviceLive.device.name : "device";
+      btn.textContent = on ? `● ${name} connected` : "○ No device";
+      btn.classList.toggle("connected", on);
+      btn.title = on
+        ? "Connected — click a preset to switch the pedal to it. Click here to re-check."
+        : "No device found. Connect via USB with Suite closed, then click to re-check.";
+    }
+    renderPresets();
+  }
+
+  async function selectPreset(p) {
+    if (!deviceLive.connected) {
+      // browse mode (no pedal): multi-open toggle, unchanged
+      if (expanded.has(p.slot)) expanded.delete(p.slot);
+      else expanded.add(p.slot);
+      renderPresets();
+      return;
+    }
+    // active-preset mode: solo-expand (collapse others), then select on the pedal
+    const already = expanded.has(p.slot);
+    expanded.clear();
+    if (!already) expanded.add(p.slot);
+    renderPresets();
+    if (already) return; // re-clicking the open one just collapses it; don't re-select
+    if (
+      deviceLive.device &&
+      inventoryDevice &&
+      deviceLive.device.key !== inventoryDevice.key
+    ) {
+      UI.toast(
+        `Pedal is a ${deviceLive.device.name} but these presets are ${inventoryDevice.name} — slot #${p.slot} may differ on the pedal.`,
+        "err"
+      );
+    }
+    try {
+      const r = await UI.jpost("/api/device/select", { slot: p.slot });
+      if (r.ok) {
+        activeSlot = p.slot;
+        // the pedal's live state for this slot was just pulled into the cache —
+        // re-fetch so the expanded detail shows current settings, not a stale scan
+        if (r.cache_updated) {
+          try {
+            await loadInventory();
+          } catch {
+            /* keep showing cached values if the refresh re-fetch fails */
+          }
+        }
+        renderPresets();
+        UI.toast(
+          `Pedal switched to #${p.slot} ${p.name}` +
+            (r.cache_updated ? " · pulled live settings" : ""),
+          "ok"
+        );
+      } else {
+        UI.toast(r.error || "could not select preset", "err");
+      }
+    } catch (e) {
+      UI.toast(`Select failed: ${e.message}`, "err");
+    }
   }
 
   // --- device header: empty-state hero (no data) vs "last scan · rescan" bar ----
@@ -975,7 +1051,11 @@
     renderSaved();
     updateDeviceHeader();
     render();
+    refreshDeviceStatus(); // non-blocking: light up click-to-select if a pedal is present
   }
+
+  const connBtn = $("device-conn");
+  if (connBtn) connBtn.addEventListener("click", refreshDeviceStatus);
 
   init();
 })();

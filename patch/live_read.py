@@ -22,23 +22,30 @@ READ_CMD = 0x01
 CATSEL = 0x12  # constant data[0] in Suite's name-read requests
 
 
-def find_port():
-    """Resolve the connected Valeton MIDI port -> (port_name, DeviceProfile).
-    The read protocol (selectors 0x40/0x41, CRC-8/0x07, nibble framing) is shared
-    by the GP-5 and GP-50, so a scan/sync works on either once the right port is
-    opened. Checks GP-50 first so its name isn't shadowed by the "GP-5" substring.
-    Falls back to (PORT, GP50) when mido can't enumerate ports."""
+def find_port_optional():
+    """(port_name, DeviceProfile) for a physically connected Valeton device, or
+    (None, None) if none is present. Checks GP-50 first so its name isn't shadowed
+    by the "GP-5" substring."""
     try:
         names = mido.get_input_names()
-    except Exception:  # noqa: BLE001 — no backend/ports; keep the legacy default
-        return PORT, GP50
+    except Exception:  # noqa: BLE001 — no backend/ports available
+        return None, None
     for name in names:
         if "GP-50" in name:
             return name, GP50
     for name in names:
         if "GP-5" in name:
             return name, GP5
-    return PORT, GP50
+    return None, None
+
+
+def find_port():
+    """Resolve the connected Valeton MIDI port -> (port_name, DeviceProfile).
+    The read protocol (selectors 0x40/0x41, CRC-8/0x07, nibble framing) is shared
+    by the GP-5 and GP-50, so a scan/sync works on either once the right port is
+    opened. Falls back to (PORT, GP50) when no device is found (legacy default)."""
+    name, prof = find_port_optional()
+    return (name, prof) if name else (PORT, GP50)
 
 
 def build_request(selector):

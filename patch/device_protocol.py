@@ -89,6 +89,25 @@ def sync_result(
     return out
 
 
+def select_result(
+    ok: bool, slot: int, *, device: dict | None = None, error: str | None = None
+) -> dict:
+    """Terminal result of select_patch.py (a non-destructive Program Change)."""
+    out: dict = {"ok": ok, "slot": slot}
+    if device is not None:
+        out["device"] = device
+    if error is not None:
+        out["error"] = error
+    return out
+
+
+def status_result(
+    connected: bool, *, device: dict | None = None, port: str | None = None
+) -> dict:
+    """Terminal result of device_status.py: is a Valeton device connected, and which."""
+    return {"connected": connected, "device": device, "port": port}
+
+
 # --- emit (script side) -----------------------------------------------------------
 
 

@@ -536,11 +536,23 @@
         fb.type = "button";
         fb.className = "fs-toggle" + (on ? " on" : "") + (full ? " full" : "");
         fb.textContent = fsKey.toUpperCase();
-        fb.disabled = full;
-        fb.title = full
-          ? `${fsKey.toUpperCase()} already has 2 blocks`
-          : `Assign this block to ${fsKey.toUpperCase()}`;
-        if (!full) fb.addEventListener("click", (ev) => { ev.stopPropagation(); toggleFS(p, blkIdx, fsKey); });
+        fb.setAttribute("aria-pressed", on ? "true" : "false");
+        fb.title = on
+          ? `Remove this block from ${fsKey.toUpperCase()}`
+          : full
+            ? `${fsKey.toUpperCase()} already has its 2 blocks (device max)`
+            : `Assign this block to ${fsKey.toUpperCase()}`;
+        // always handle the click so it never falls through to the row toggle;
+        // a full FS just warns instead of assigning (was: disabled + pointer-events
+        // none let the click hit the header and collapse/expand the row).
+        fb.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          if (full) {
+            UI.toast(`${fsKey.toUpperCase()} already has its 2 blocks.`, "err");
+            return;
+          }
+          toggleFS(p, blkIdx, fsKey);
+        });
         head.appendChild(fb);
       });
       bd.appendChild(head);

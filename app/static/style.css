@@ -731,23 +731,25 @@ button:disabled {
 .block-detail-head .model-chip { margin-right: auto; }
 .block-detail-head .fs-toggle { order: 1; }
 .block-detail-head .state-toggle { order: 2; }
-/* FS pills on the colored header */
+/* FS pills — OFF/available look, per header context */
 .block-detail-head .fs-toggle {
   background: rgba(255, 255, 255, 0.16); color: #fff; border-color: rgba(255, 255, 255, 0.35);
 }
-.block-detail-head .fs-toggle.on { background: #fff; color: var(--c); border-color: transparent; }
-/* the on/off switch: translucent-white track on colored headers, active = knob right */
-.block-detail-head .state-toggle { background: rgba(255, 255, 255, 0.3); }
-.block-detail-head .state-toggle.on { background: rgba(255, 255, 255, 0.5); }
 .block-detail.bypassed .block-detail-head .fs-toggle {
   background: var(--track); color: var(--muted); border-color: var(--border);
 }
-/* an FS assignment stays visible even when the block is bypassed (was: the rule
-   above washed the "on" highlight back to the off look, so assigning FS to an
-   inactive block looked like a no-op) */
+/* FS pill — ASSIGNED look. One strong, consistent highlight (accent fill + white
+   ring + bold) that reads clearly on BOTH the colored active header and the muted
+   bypassed header, so it's always obvious which switch a block is assigned to.
+   Both selectors out-specify the off rules above (incl. the bypassed 0,4,0). */
+.block-detail-head .fs-toggle.on,
 .block-detail.bypassed .block-detail-head .fs-toggle.on {
-  background: var(--accent); color: var(--accent-text); border-color: var(--accent);
+  background: var(--accent); color: var(--accent-text);
+  border-color: #fff; font-weight: 800;
 }
+/* the on/off switch: translucent-white track on colored headers, active = knob right */
+.block-detail-head .state-toggle { background: rgba(255, 255, 255, 0.3); }
+.block-detail-head .state-toggle.on { background: rgba(255, 255, 255, 0.5); }
 .block-detail.bypassed .block-detail-head .state-toggle { background: var(--track); }
 .block-detail-head .fs-toggle.full { opacity: 0.45; }
 
@@ -863,8 +865,9 @@ input[type="range"]::-moz-range-thumb {
   border: 1px solid var(--border); background: var(--track); color: var(--muted);
 }
 .fs-toggle.on { color: var(--accent-text); background: var(--accent); border-color: var(--accent); }
-.fs-toggle.full { opacity: 0.35; cursor: not-allowed; }
-.fs-toggle:disabled { pointer-events: none; }
+/* FS already has its 2 blocks and this isn't one of them: dimmed + not-allowed,
+   but still clickable (the JS swallows it + warns) so it can't collapse the row */
+.fs-toggle.full { opacity: 0.4; cursor: not-allowed; }
 
 .patch-settings { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
 .patch-set { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--muted); }

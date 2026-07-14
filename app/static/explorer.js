@@ -39,6 +39,15 @@
     render();
   }
 
+  // clicking a block chip toggles its filter: add if absent, remove if already
+  // applied (so a second click on the same block clears it).
+  function toggleFilter(f) {
+    const before = filters.length;
+    filters = filters.filter((x) => !sameFilter(x, f));
+    if (filters.length === before) filters.push(f);
+    render();
+  }
+
   function matchesFilters(p) {
     const blocks = activeBlocks(p);
     return filters.every((f) =>
@@ -175,12 +184,17 @@
     const useOfficial = officialOn() && b.official;
     c.textContent = useOfficial ? b.label_official : b.label;
     if (useOfficial) c.classList.add("official");
-    c.title = b.official
-      ? `Device: ${b.label}\nOfficial: ${b.label_official}`
-      : "Filter by this block · type · model";
+    const f = { block: b.block, type: b.type, model: b.model };
+    const active = filters.some((x) => sameFilter(x, f));
+    if (active) c.classList.add("chip-filtered"); // show it's an applied filter
+    c.title = active
+      ? "Click to remove this filter"
+      : b.official
+        ? `Device: ${b.label}\nOfficial: ${b.label_official}`
+        : "Filter by this block · type · model";
     c.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      addFilter({ block: b.block, type: b.type, model: b.model });
+      toggleFilter(f);
     });
     return c;
   }

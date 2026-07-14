@@ -887,6 +887,10 @@ input[type="range"]::-moz-range-thumb {
 }
 .chip-row .chip:hover { border-color: transparent; filter: brightness(1.07); }
 .chip-row .chip.official { color: #fff; }
+/* an applied filter: ring it so a second click (to clear) is obviously toggling */
+.chip-row .chip.chip-filtered {
+  box-shadow: 0 0 0 2px var(--card-bg), 0 0 0 4px var(--accent);
+}
 
 .saved-row {
   display: flex;

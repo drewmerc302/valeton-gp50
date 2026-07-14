@@ -67,6 +67,16 @@ def inventory() -> dict:
         "snaptones": patchlib.all_snaptones(),
         "irs": patchlib.all_irs(),
         "patches": patchlib.all_patches(),
+        # slot domains, so no frontend re-derives ranges or sentinels
+        "domains": {
+            "patch_slots": [0, patchlib.PATCH_SLOT_MAX],
+            "snaptone_slots": [0, patchlib.SNAPTONE_SLOT_MAX],
+            "user_snaptone_slots": [
+                patchlib.USER_SNAPTONE_START,
+                patchlib.SNAPTONE_SLOT_MAX,
+            ],
+            "user_ir_base": patchlib.USER_IR_BASE,
+        },
     }
 
 
@@ -226,7 +236,7 @@ def build(req: BuildRequest) -> Response | dict:
 
     if not req.confirm:
         raise HTTPException(400, "refusing to write: confirm=true required")
-    if req.target_slot is None or not 0 <= req.target_slot <= 99:
+    if req.target_slot is None or not 0 <= req.target_slot <= patchlib.PATCH_SLOT_MAX:
         raise HTTPException(400, "target_slot 0..99 required to write to the device")
     result = device_io.write_patch(prst, req.target_slot)
     if result.get("ok"):
@@ -246,7 +256,7 @@ def write_to_device(req: WriteRequest) -> dict:
     Uses the validated 0x1D patch-write protocol (see re/DEVICE_WRITE.md)."""
     if not req.confirm:
         raise HTTPException(400, "refusing to write: confirm=true required")
-    if not 0 <= req.target_slot <= 99:
+    if not 0 <= req.target_slot <= patchlib.PATCH_SLOT_MAX:
         raise HTTPException(400, f"target_slot {req.target_slot} out of range (0..99)")
     try:
         _, data = patchlib.apply_edits(

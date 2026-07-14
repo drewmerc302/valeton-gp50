@@ -17,6 +17,7 @@ import subprocess
 import tempfile
 import threading
 
+from app import patchlib
 from patch import device_protocol as proto
 from patch import prst_format
 
@@ -81,7 +82,7 @@ def write_patch(prst: bytes, slot: int, timeout: float = 30.0) -> dict:
     """Write a 552-byte .prst to device patch index `slot` (0..99), then read the
     slot name back to verify. Gated + paced in the subprocess. Returns
     {ok, sent, acks, verified_name|error}. Never raises."""
-    if not 0 <= slot <= 99:
+    if not 0 <= slot <= patchlib.PATCH_SLOT_MAX:
         return {"ok": False, "error": f"slot {slot} out of range (0..99)"}
     try:
         prst_format.check_length(prst)

@@ -63,12 +63,12 @@
   }
   const usageCount = (kind, slot) => usagePatches(kind, slot).length;
 
-  // Default factory presets are all named "GP-50" — treated as empty/safe targets.
+  // The backend marks factory-default "GP-50" presets as empty (safe targets).
   const isEmpty = (slot) => {
     const p = state.patches.find((x) => x.slot === slot);
-    return !!p && UI.isEmptyName(p.name);
+    return !!p && !!p.empty;
   };
-  const emptySlots = () => state.patches.filter((p) => isEmpty(p.slot));
+  const emptySlots = () => state.patches.filter((p) => p.empty);
   const slotName = (slot) => {
     const p = state.patches.find((x) => x.slot === slot);
     return p ? p.name : `#${slot}`;

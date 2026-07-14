@@ -420,7 +420,6 @@ def test_shared_ui_core_loaded_by_both_pages():
         "toast",
         "confirmDialog",
         "promptDialog",
-        "isEmptyName",
         "isUserIrSlot",
     ):
         assert prim in core
@@ -431,6 +430,24 @@ def test_shared_ui_core_loaded_by_both_pages():
     # one User-IR threshold, defined in the core only
     assert "0x100000" in core
     assert "0xfffff" not in client.get("/static/device_a.js").text
+
+
+def test_inventory_exposes_slot_semantics():
+    # the backend owns the empty-slot truth and the slot domains; frontends
+    # consume answers instead of re-deriving sentinels/ranges.
+    body = client.get("/api/device/inventory").json()
+    doms = body["domains"]
+    assert doms["patch_slots"] == [0, 99]
+    assert doms["snaptone_slots"] == [0, 79]
+    assert doms["user_snaptone_slots"] == [50, 79]
+    assert doms["user_ir_base"] == 0x100000
+    for p in body["patches"]:
+        assert isinstance(p["empty"], bool)
+        assert p["empty"] == (p["name"].strip().upper() == "GP-50")
+    # no frontend file re-derives the "GP-50" sentinel
+    for js in ("ui_core.js", "device_core.js", "device_a.js", "explorer.js"):
+        text = client.get(f"/static/{js}").text
+        assert 'toUpperCase() === "GP-50"' not in text, f"{js} re-derives empty"
 
 
 def test_snaptone_patches_are_the_nam_patches():

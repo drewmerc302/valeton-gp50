@@ -10,15 +10,14 @@
  *   .jget(url) / .jpost(url, body) / .jdel(url)   fetch + error unwrapping
  *   .downloadResponse(resp, fallback)  content-disposition -> browser download
  *   .USER_IR_BASE / .isUserIrSlot(slot)   User IR slot threshold (0x0A10xxxx)
- *   .isEmptyName(name)                 empty-slot sentinel (factory "GP-50")
+ *
+ * Empty-slot truth (`patch.empty`) comes from the backend inventory —
+ * no frontend re-derives the "GP-50" sentinel.
  */
 (() => {
   const USER_IR_BASE = 0x100000; // CAB fxlow >= this => a User IR slot
 
   const isUserIrSlot = (slot) => slot >= USER_IR_BASE;
-
-  // Factory default presets are all named "GP-50" — treated as empty slots.
-  const isEmptyName = (name) => (name || "").trim().toUpperCase() === "GP-50";
 
   // --- fetch helpers ---------------------------------------------------------
   async function _unwrap(r) {
@@ -143,7 +142,6 @@
   window.UI = {
     USER_IR_BASE,
     isUserIrSlot,
-    isEmptyName,
     jget,
     jpost,
     jdel,

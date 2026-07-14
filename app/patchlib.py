@@ -49,6 +49,16 @@ AMP_CATS = (0x07, 0x08)
 BLOCK_NAMES = ["NR", "PRE", "DST", "AMP", "CAB", "EQ", "MOD", "DLY", "RVB", "N->S"]
 USER_IR_BASE = 0x100000  # CAB fxlow >= this => a User IR slot (0x0A10xxxx fxid)
 
+# Slot domains — three different ranges that are easy to conflate:
+PATCH_SLOT_MAX = 99  # device preset slots 0..99
+SNAPTONE_SLOT_MAX = 79  # N->S catalog indices 0..79 (0..49 factory amps)
+USER_SNAPTONE_START = 50  # user SnapTone slots = 50..79
+
+
+def is_empty_name(name: str | None) -> bool:
+    """Factory default presets are all named "GP-50" — treated as empty slots."""
+    return (name or "").strip().upper() == "GP-50"
+
 
 class SnapTone(TypedDict):
     slot: int
@@ -66,6 +76,7 @@ class Ir(TypedDict):
 class Patch(TypedDict):
     slot: int
     name: str
+    empty: bool  # factory-default "GP-50" preset = safe write target
     file: str
     uses_snaptone: bool
     snaptone_slot: int  # N->S slot (0 = none)
@@ -274,10 +285,12 @@ def _load() -> tuple:
         cab = next((fx for _, cat, fx in recs if cat == CAB_CAT), 0)
         amp = next((fx for _, cat, fx in recs if cat in AMP_CATS), 0)
         amp_cat = next((cat for _, cat, _ in recs if cat in AMP_CATS), 0x07)
+        name = _patch_name(b, path)
         patches.append(
             Patch(
                 slot=_slot_from_filename(path),
-                name=_patch_name(b, path),
+                name=name,
+                empty=is_empty_name(name),
                 file=os.path.basename(path),
                 uses_snaptone=ns != 0,
                 snaptone_slot=ns,
@@ -473,7 +486,7 @@ def clone_with_snaptone(patch_slot: int, target_ns_slot: int) -> tuple[str, byte
     src = patch_file(patch_slot)
     if src is None:
         raise ValueError(f"unknown patch slot {patch_slot}")
-    if not (0 <= target_ns_slot <= 79):
+    if not (0 <= target_ns_slot <= SNAPTONE_SLOT_MAX):
         raise ValueError(f"SnapTone slot out of range: {target_ns_slot}")
     b = bytearray(open(src, "rb").read())
     off = fmt.model_rec_offset(b, NS_CAT)
@@ -495,7 +508,7 @@ def repoint_snaptone_body(
     (a live patch OR a stored template) — this is the shared build engine. Raises
     if the body has no N->S block or the slot is out of range."""
     fmt.check_length(prst)
-    if not (0 <= target_ns_slot <= 79):
+    if not (0 <= target_ns_slot <= SNAPTONE_SLOT_MAX):
         raise ValueError(f"SnapTone slot out of range: {target_ns_slot}")
     b = bytearray(prst)
     off = fmt.model_rec_offset(b, NS_CAT)

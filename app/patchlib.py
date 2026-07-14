@@ -2,8 +2,9 @@
 
 Replaces the old mock in device_stub. No device I/O: reads the 100 exported
 .prst files + patch/fxid_ring.json (the model catalog decoded from Valeton
-Suite). This is possible because the .prst format is fully reverse-engineered
-(see patch/prst.py, patch/REFIT_FINDINGS.md).
+Suite). The .prst byte layout itself lives in patch/prst_format.py — this
+module owns the *meaning* layered on top: model catalog resolution, SnapTone
+identity, inventory, and edits.
 
 A patch references its blocks by device SLOT / model index, not by identity:
 model record = [modelIndex:u8][00 00][category:u8], and fxid = (category<<24)|idx.
@@ -11,8 +12,8 @@ model record = [modelIndex:u8][00 00][category:u8], and fxid = (category<<24)|id
 - CAB  (category 0x0a) = cab / IR model
 - AMP  (category 0x07/0x08) = amp model
 
-`bank_map.json` (written by patch/live_read once the device is read) overrides
-SnapTone slot labels with authoritative device names when present.
+`bank_map.json` (written by patch/read_bank_map.py once the device is read)
+overrides SnapTone slot labels with authoritative device names when present.
 """
 
 from __future__ import annotations
@@ -24,6 +25,8 @@ import re
 import struct
 from functools import lru_cache
 from typing import Optional, TypedDict
+
+from patch import prst_format as fmt
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXPORT_DIR = os.path.join(PROJECT_ROOT, "presetExports")
@@ -101,35 +104,12 @@ def _multi_type_blocks() -> frozenset:
     return frozenset(b for b, ts in by_block.items() if len(ts) > 1)
 
 
-def _model_block(b: bytes):
-    """Per-block model record = [b0][b1][b2][category]. Returns (idx, cat, fxlow):
-    idx = b0 (the slot/index for N->S and AMP), cat = category, and fxlow = the
-    full 3-byte little-endian model index (b0|b1<<8|b2<<16) used to resolve names.
-    Factory models have b1=b2=0 (fxlow==idx); User IRs set b2 (fxid 0x0A10xxxx)."""
-    i = b.find(bytes([0x03, 0x30, 0x28, 0x00]))
-    if i < 0:
-        return []
-    val = b[i + 4 : i + 4 + 40]
-    out = []
-    for k in range(10):
-        r = val[k * 4 : k * 4 + 4]
-        fxlow = r[0] | (r[1] << 8) | (r[2] << 16)
-        out.append((r[0], r[3], fxlow))
-    return out
-
-
-def _bypass_mask(b: bytes) -> int:
-    """u32 bitmask (record id=1 grp=0x30): bit k = block k active (BLOCK_NAMES order)."""
-    i = b.find(bytes([0x01, 0x30, 0x04, 0x00]))
-    return struct.unpack_from("<I", b, i + 4)[0] if i >= 0 else 0
-
-
 def _patch_settings(b: bytes) -> dict:
     """Patch-level settings from the group-0x20 records. id=1 Patch VOL, id=2 BPM
     are confirmed against hardware; ids 3-10 (EXP / footswitch assignments) are
     not yet decoded (need multi-preset diffs) so are omitted rather than guessed."""
     out = {}
-    i = 0x55
+    i = fmt.SETTINGS_OFF
     while i + 4 <= len(b) and b[i + 1] == 0x20:
         rid = b[i]
         ln = struct.unpack_from("<H", b, i + 2)[0]
@@ -147,19 +127,10 @@ def _patch_settings(b: bytes) -> dict:
     return out
 
 
-FS_TRAILER = bytes([0x03, 0x00, 0x0A, 0x00])  # id=3 grp=0 len=10 trailer record
-
-
-def _fs_offset(b: bytes) -> int:
-    """Offset of the FS mask pair in the trailer ([FS1 u32][FS2 u32][2 bytes])."""
-    i = b.rfind(FS_TRAILER)
-    return i + 4 if i >= 0 else -1
-
-
 def _footswitches(b: bytes):
     """Footswitch assignments -> (fs1_blocks, fs2_blocks) as block-index lists.
     Each is a 10-bit block bitmask (<=2 bits); trailer record id=3 grp=0."""
-    off = _fs_offset(b)
+    off = fmt.fs_offset(b)
     if off < 0:
         return [], []
     a = struct.unpack_from("<I", b, off)[0]
@@ -168,15 +139,6 @@ def _footswitches(b: bytes):
         [i for i in range(10) if a >> i & 1],
         [i for i in range(10) if c >> i & 1],
     )
-
-
-def _param_floats(b: bytes) -> list:
-    """The 80-float parameter array (record id=4 grp=0x30, len 0x140) = 10 blocks
-    x 8 float32 slots. A param's value = floats[block_index*8 + algId]."""
-    i = b.find(bytes([0x04, 0x30, 0x40, 0x01]))
-    if i < 0:
-        return [0.0] * 80
-    return list(struct.unpack_from("<80f", b, i + 4))
 
 
 def _fmt_param(value: float, toggle: bool, unit: str) -> str:
@@ -225,9 +187,9 @@ def _block_label(block: str, btype: Optional[str], name: Optional[str]) -> str:
 def _blocks_for(b: bytes, ns_label: dict) -> list[dict]:
     """Per-block detail: name, active flag, model type + model, and a display
     label 'BLOCK · Type · Model' (type omitted for single-type blocks)."""
-    mask = _bypass_mask(b)
-    recs = _model_block(b)
-    floats = _param_floats(b)
+    mask = fmt.bypass_mask(b)
+    recs = fmt.model_records(b)
+    floats = fmt.param_floats(b)
     out = []
     for k, block in enumerate(BLOCK_NAMES):
         idx, cat, fxlow = recs[k] if k < len(recs) else (0, 0, 0)
@@ -266,7 +228,7 @@ def _blocks_for(b: bytes, ns_label: dict) -> list[dict]:
 
 
 def _patch_name(b: bytes, path: str) -> str:
-    nm = b[0x19:0x30].split(b"\0")[0].decode("latin1", "replace").strip()
+    nm = fmt.read_name(b)
     return nm or re.sub(r"^\d+-", "", os.path.basename(path)).replace(".prst", "")
 
 
@@ -307,7 +269,7 @@ def _load() -> tuple:
     raw: dict[int, bytes] = {}
     for path in sorted(glob.glob(os.path.join(_source_dir(), "*.prst"))):
         b = open(path, "rb").read()
-        recs = _model_block(b)
+        recs = fmt.model_records(b)
         ns = next((idx for idx, cat, _ in recs if cat == NS_CAT), 0)
         cab = next((fx for _, cat, fx in recs if cat == CAB_CAT), 0)
         amp = next((fx for _, cat, fx in recs if cat in AMP_CATS), 0)
@@ -504,28 +466,6 @@ def patch_file(slot: int) -> Optional[str]:
 
 # --- clone / edit (features 5/6): repoint a patch's SnapTone, refix the CRC ---
 
-CRC_OFF = 0x14  # byte 0x14 = CRC-8/0x07 over body[0x15:]
-
-
-def _crc8(data, init=0):
-    c = init
-    for byte in data:
-        c ^= byte
-        for _ in range(8):
-            c = ((c << 1) ^ 0x07) & 0xFF if c & 0x80 else (c << 1) & 0xFF
-    return c
-
-
-def _model_rec_offset(b: bytes, category: int) -> Optional[int]:
-    i = b.find(bytes([0x03, 0x30, 0x28, 0x00]))
-    if i < 0:
-        return None
-    base = i + 4
-    for k in range(10):
-        if b[base + k * 4 + 3] == category:
-            return base + k * 4
-    return None
-
 
 def clone_with_snaptone(patch_slot: int, target_ns_slot: int) -> tuple[str, bytes]:
     """Return (filename, .prst bytes) for `patch_slot` repointed at N->S
@@ -536,23 +476,15 @@ def clone_with_snaptone(patch_slot: int, target_ns_slot: int) -> tuple[str, byte
     if not (0 <= target_ns_slot <= 79):
         raise ValueError(f"SnapTone slot out of range: {target_ns_slot}")
     b = bytearray(open(src, "rb").read())
-    off = _model_rec_offset(b, NS_CAT)
+    off = fmt.model_rec_offset(b, NS_CAT)
     if off is None:
         raise ValueError(f"patch {patch_slot} has no N->S (SnapTone) block")
     b[off] = target_ns_slot
-    b[CRC_OFF] = _crc8(b[CRC_OFF + 1 :])
+    fmt.refix_crc(b)
     label = (find_snaptone(target_ns_slot) or {}).get("name") or f"NS{target_ns_slot}"
     stem = os.path.basename(src).replace(".prst", "")
     safe = re.sub(r"[^A-Za-z0-9]+", "", label)[:12]
     return f"{stem}__{safe}.prst", bytes(b)
-
-
-NAME_OFF = 0x19  # 16-byte patch name region prst[0x19:0x29], latin1, null-padded
-
-
-def set_patch_name(b: bytearray, name: str) -> None:
-    """Overwrite the 16-byte patch-name region in place (does NOT refix the CRC)."""
-    b[NAME_OFF : NAME_OFF + 16] = name.encode("latin1", "replace")[:16].ljust(16, b"\0")
 
 
 def repoint_snaptone_body(
@@ -562,18 +494,17 @@ def repoint_snaptone_body(
     `target_ns_slot`, optionally renamed, CRC refixed. Works on any 552-byte body
     (a live patch OR a stored template) — this is the shared build engine. Raises
     if the body has no N->S block or the slot is out of range."""
-    if len(prst) != 552:
-        raise ValueError(f"expected a 552-byte .prst, got {len(prst)}")
+    fmt.check_length(prst)
     if not (0 <= target_ns_slot <= 79):
         raise ValueError(f"SnapTone slot out of range: {target_ns_slot}")
     b = bytearray(prst)
-    off = _model_rec_offset(b, NS_CAT)
+    off = fmt.model_rec_offset(b, NS_CAT)
     if off is None:
         raise ValueError("patch has no N->S (SnapTone) block to repoint")
     b[off] = target_ns_slot
     if name is not None:
-        set_patch_name(b, name)
-    b[CRC_OFF] = _crc8(b[CRC_OFF + 1 :])
+        fmt.write_name(b, name)
+    fmt.refix_crc(b)
     return bytes(b)
 
 
@@ -592,43 +523,42 @@ def apply_edits(patch_slot: int, edits: dict) -> tuple[str, bytes]:
         raise ValueError(f"unknown patch slot {patch_slot}")
     b = bytearray(open(src, "rb").read())
 
-    # 0. block MODEL changes (record 03 30): each block k's model = 4 bytes
+    # 0. block MODEL changes: each block k's model = 4 bytes
     #    [fxlow b0][b1][b2][category]. fxid = (category<<24)|fxlow.
-    mb = b.find(bytes([0x03, 0x30, 0x28, 0x00]))
+    mb = fmt.models_offset(b)
     for blk, fxid in (edits.get("models") or {}).items():
         if mb < 0:
             break
-        rec = mb + 4 + int(blk) * 4
+        rec = mb + int(blk) * 4
         fxid = int(fxid)
         b[rec] = fxid & 0xFF
         b[rec + 1] = (fxid >> 8) & 0xFF
         b[rec + 2] = (fxid >> 16) & 0xFF
         b[rec + 3] = (fxid >> 24) & 0xFF
 
-    # 1. parameter floats (record 04 30, 10 blocks x 8 slots)
-    fi = b.find(bytes([0x04, 0x30, 0x40, 0x01]))
+    # 1. parameter floats (10 blocks x 8 slots)
+    fi = fmt.params_offset(b)
     if fi < 0 and edits.get("params"):
         raise ValueError("no parameter array in patch")
-    base = fi + 4
     for blk, params in (edits.get("params") or {}).items():
         for alg, value in params.items():
             slot = int(blk) * 8 + int(alg)
             if 0 <= slot < 80:
-                struct.pack_into("<f", b, base + slot * 4, float(value))
+                struct.pack_into("<f", b, fi + slot * 4, float(value))
 
-    # 2. bypass bitmask (record 01 30)
-    mi = b.find(bytes([0x01, 0x30, 0x04, 0x00]))
+    # 2. bypass bitmask
+    mi = fmt.bypass_offset(b)
     if mi >= 0 and edits.get("bypass"):
-        mask = struct.unpack_from("<I", b, mi + 4)[0]
+        mask = struct.unpack_from("<I", b, mi)[0]
         for blk, on in edits["bypass"].items():
             bit = 1 << int(blk)
             mask = (mask | bit) if on else (mask & ~bit)
-        struct.pack_into("<I", b, mi + 4, mask & 0xFFFFFFFF)
+        struct.pack_into("<I", b, mi, mask & 0xFFFFFFFF)
 
     # 3. patch-level settings (group 0x20 records: id1 VOL 1-byte, id2 BPM 4-byte)
     s = edits.get("settings") or {}
     if s:
-        i = 0x55
+        i = fmt.SETTINGS_OFF
         while i + 4 <= len(b) and b[i + 1] == 0x20:
             rid = b[i]
             ln = struct.unpack_from("<H", b, i + 2)[0]
@@ -643,7 +573,7 @@ def apply_edits(patch_slot: int, edits: dict) -> tuple[str, bytes]:
     # 4. footswitch assignments (trailer FS1/FS2 masks, <=2 blocks each)
     fs = edits.get("footswitches") or {}
     if fs:
-        off = _fs_offset(b)
+        off = fmt.fs_offset(b)
         if off >= 0:
             for key, slot_off in (("fs1", 0), ("fs2", 4)):
                 if key in fs:
@@ -653,6 +583,6 @@ def apply_edits(patch_slot: int, edits: dict) -> tuple[str, bytes]:
                         mask |= 1 << int(bi)
                     struct.pack_into("<I", b, off + slot_off, mask)
 
-    b[CRC_OFF] = _crc8(b[CRC_OFF + 1 :])
+    fmt.refix_crc(b)
     stem = os.path.basename(src).replace(".prst", "")
     return f"{stem}__edited.prst", bytes(b)

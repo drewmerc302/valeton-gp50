@@ -19,6 +19,7 @@ import threading
 import uuid
 
 from app import patchlib
+from patch import prst_format
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIB_PATH = os.path.join(PROJECT_ROOT, "templates.json")
@@ -82,8 +83,12 @@ def add_from_patch(name: str, source_slot: int) -> dict:
     if path is None:
         raise ValueError(f"unknown patch slot {source_slot}")
     body = open(path, "rb").read()
-    if len(body) != 552:
-        raise ValueError(f"patch {source_slot} is not a 552-byte .prst")
+    try:
+        prst_format.check_length(body)
+    except ValueError:
+        raise ValueError(
+            f"patch {source_slot} is not a {prst_format.PRST_LEN}-byte .prst"
+        )
     patch = next((p for p in patchlib.all_patches() if p["slot"] == source_slot), None)
     entry = {
         "id": uuid.uuid4().hex[:12],

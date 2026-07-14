@@ -15,12 +15,12 @@ import time
 import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from patch import live_read, reconstruct_prst
+from patch import live_read, prst_format
 import mido
 
 CATSEL, BODY_SEL = 0x12, 0x41
 POST_PC = 0.30  # settle after preset switch (0.15 races; 0.25 clean; 0.30 = margin)
-BODY_LEN = 511
+BODY_LEN = prst_format.BODY_LEN
 
 
 def _read(inp, out, req, wait=2.5, idle=0.15):
@@ -97,7 +97,7 @@ def main():
                     total=total,
                 )
                 continue
-            prst = reconstruct_prst.rebuild(nm, body)
+            prst = prst_format.rebuild(nm, body)
             safe = "".join(c if c.isalnum() or c in " -_" else "_" for c in nm)
             open(os.path.join(outdir, f"{slot:02d}-{safe}.prst"), "wb").write(prst)
             written += 1

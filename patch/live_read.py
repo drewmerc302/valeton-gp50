@@ -9,22 +9,17 @@ Usage:
   python live_read.py read <hexsel>     # read one bank selector (e.g. 0x30)
 """
 
+import os
 import sys
 import time
 import mido
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from patch.prst_format import crc8  # noqa: E402 — shared CRC-8/0x07
+
 PORT = "GP-50"
 READ_CMD = 0x01
 CATSEL = 0x12  # constant data[0] in Suite's name-read requests
-
-
-def crc8(data, init=0):
-    c = init
-    for b in data:
-        c ^= b
-        for _ in range(8):
-            c = ((c << 1) ^ 0x07) & 0xFF if c & 0x80 else (c << 1) & 0xFF
-    return c
 
 
 def build_request(selector):

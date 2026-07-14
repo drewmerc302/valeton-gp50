@@ -12,19 +12,12 @@ SAFETY: the pedal wedged once from unvalidated traffic. Never send a guessed
 write command. A patch write needs its command byte + slot addressing decoded
 from a Suite patch-import capture first (see re/DEVICE_WRITE.md)."""
 
+import os
 import re
 import sys
 
-POLY = 0x07
-
-
-def crc8(data, init=0):
-    c = init
-    for b in data:
-        c ^= b
-        for _ in range(8):
-            c = ((c << 1) ^ POLY) & 0xFF if c & 0x80 else (c << 1) & 0xFF
-    return c
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from patch.prst_format import PRST_LEN, NAME_OFF, check_length, crc8  # noqa: E402
 
 
 def build_packet(cmd: int, index: int, payload: bytes) -> list:
@@ -55,9 +48,8 @@ def build_patch_write_stream(prst: bytes, slot: int) -> list:
     Returns wire-byte packets (each incl F0/F7). Does NOT send — see send_stream."""
     if not 0 <= slot <= 0xFF:
         raise ValueError(f"slot out of range: {slot}")
-    if len(prst) != 552:
-        raise ValueError(f"expected a 552-byte .prst, got {len(prst)}")
-    payload = PATCH_HDR + bytes([slot, 0x00, 0x00, 0x00]) + prst[0x19:]
+    check_length(prst)
+    payload = PATCH_HDR + bytes([slot, 0x00, 0x00, 0x00]) + prst[NAME_OFF:]
     return [
         build_packet(PATCH_WRITE_CMD, i // PATCH_BLOCK, payload[i : i + PATCH_BLOCK])
         for i in range(0, len(payload), PATCH_BLOCK)
@@ -94,8 +86,11 @@ def validate_stream(packets: list) -> tuple:
         if length != len(buf) - 4:
             return False, f"packet {i}: length {length} != payload {len(buf) - 4}"
         payload += bytes(buf[4 : 4 + length])
-    if len(payload) != 6 + (552 - 0x19):  # header + prst[0x19:]
-        return False, f"payload {len(payload)} bytes, expected {6 + (552 - 0x19)}"
+    if len(payload) != 6 + (PRST_LEN - NAME_OFF):  # header + prst[NAME_OFF:]
+        return (
+            False,
+            f"payload {len(payload)} bytes, expected {6 + (PRST_LEN - NAME_OFF)}",
+        )
     if payload[:2] != PATCH_HDR:
         return False, f"payload header {payload[:2].hex()} != {PATCH_HDR.hex()}"
     return True, "ok"

@@ -18,6 +18,8 @@ import subprocess
 import tempfile
 import threading
 
+from patch import prst_format
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MIDI_PY = os.path.join(PROJECT_ROOT, ".venv-midi", "bin", "python")
 READER = os.path.join(PROJECT_ROOT, "patch", "read_bank_map.py")
@@ -96,8 +98,10 @@ def write_patch(prst: bytes, slot: int, timeout: float = 30.0) -> dict:
     {ok, sent, acks, verified_name|error}. Never raises."""
     if not 0 <= slot <= 99:
         return {"ok": False, "error": f"slot {slot} out of range (0..99)"}
-    if len(prst) != 552:
-        return {"ok": False, "error": f"expected a 552-byte .prst, got {len(prst)}"}
+    try:
+        prst_format.check_length(prst)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
     if not _lock.acquire(blocking=False):
         return {"ok": False, "error": "a device operation is already running"}
     tmp = None
@@ -158,7 +162,7 @@ def _cache_write(slot: int, prst: bytes) -> None:
 
     if not glob.glob(os.path.join(SCAN_DIR, "*.prst")):
         return
-    name = prst[0x19:0x29].split(b"\0")[0].decode("latin1", "replace") or f"slot{slot}"
+    name = prst_format.read_name(prst) or f"slot{slot}"
     safe = "".join(c if c.isalnum() or c in " -_" else "_" for c in name)
     for old in glob.glob(os.path.join(SCAN_DIR, f"{slot:02d}-*.prst")):
         os.remove(old)

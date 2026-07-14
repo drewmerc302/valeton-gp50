@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app import patchlib
 from app.main import app
+from patch import prst_format as fmt
 
 client = TestClient(app)
 
@@ -104,12 +105,10 @@ def test_edit_endpoint_writes_params_bypass_settings():
     assert r.status_code == 200
     d = r.content
     assert len(d) == 552
-    assert patchlib._param_floats(d)[2 * 8 + 0] == 88.0
-    assert bool(patchlib._bypass_mask(d) >> 5 & 1) is True
+    assert fmt.param_floats(d)[2 * 8 + 0] == 88.0
+    assert bool(fmt.bypass_mask(d) >> 5 & 1) is True
     assert patchlib._patch_settings(bytes(d))["patch_vol"] == 70
-    assert d[patchlib.CRC_OFF] == patchlib._crc8(
-        d[patchlib.CRC_OFF + 1 :]
-    )  # CRC refixed
+    assert d[fmt.CRC_OFF] == fmt.crc8(d[fmt.CRC_OFF + 1 :])  # CRC refixed
 
 
 def test_edit_footswitch_assignment_max_two():
@@ -124,17 +123,17 @@ def test_edit_footswitch_assignment_max_two():
     ).content
     fs1, fs2 = patchlib._footswitches(bytes(d))
     assert fs1 == [0, 3] and fs2 == [8]
-    assert d[patchlib.CRC_OFF] == patchlib._crc8(d[patchlib.CRC_OFF + 1 :])
+    assert d[fmt.CRC_OFF] == fmt.crc8(d[fmt.CRC_OFF + 1 :])
 
 
 def test_edit_leaves_other_params_untouched():
     from app import patchlib
 
-    orig = patchlib._param_floats(open(patchlib.patch_file(15), "rb").read())
+    orig = fmt.param_floats(open(patchlib.patch_file(15), "rb").read())
     d = client.post(
         "/api/device/edit", json={"patch_slot": 15, "params": {2: {0: 88}}}
     ).content
-    now = patchlib._param_floats(d)
+    now = fmt.param_floats(d)
     # only DST/Gain (index 16) changed
     diffs = [i for i in range(80) if abs(orig[i] - now[i]) > 1e-6]
     assert diffs == [2 * 8 + 0]
@@ -198,7 +197,7 @@ def test_edit_swaps_model_record():
     d = r.content
     assert len(d) == 552
     assert patchlib._blocks_for(bytes(d), {})[2]["fxid"] == target["fxid"]
-    assert d[patchlib.CRC_OFF] == patchlib._crc8(d[patchlib.CRC_OFF + 1 :])
+    assert d[fmt.CRC_OFF] == fmt.crc8(d[fmt.CRC_OFF + 1 :])
 
 
 def test_blocklib_crud_roundtrip():
@@ -297,9 +296,9 @@ def test_write_endpoint_applies_edits_and_writes(monkeypatch):
     # the bytes sent are a valid 552-byte .prst with the edit applied + CRC fixed
     assert captured["slot"] == 90
     assert len(captured["prst"]) == 552
-    assert patchlib._param_floats(captured["prst"])[2 * 8 + 0] == 88.0
+    assert fmt.param_floats(captured["prst"])[2 * 8 + 0] == 88.0
     d = captured["prst"]
-    assert d[patchlib.CRC_OFF] == patchlib._crc8(d[patchlib.CRC_OFF + 1 :])
+    assert d[fmt.CRC_OFF] == fmt.crc8(d[fmt.CRC_OFF + 1 :])
 
 
 def test_swap_requires_confirm_and_distinct():
@@ -438,11 +437,9 @@ def test_clone_single_returns_valid_prst():
     assert r.headers["content-type"] == "application/octet-stream"
     data = r.content
     assert len(data) == 552
-    off = patchlib._model_rec_offset(data, patchlib.NS_CAT)
+    off = fmt.model_rec_offset(data, patchlib.NS_CAT)
     assert data[off] == 50  # repointed to slot 50
-    assert data[patchlib.CRC_OFF] == patchlib._crc8(
-        data[patchlib.CRC_OFF + 1 :]
-    )  # CRC fixed
+    assert data[fmt.CRC_OFF] == fmt.crc8(data[fmt.CRC_OFF + 1 :])  # CRC fixed
 
 
 def test_clone_multiple_returns_zip():
@@ -504,9 +501,9 @@ def test_template_from_patch_then_build_download():
         assert r.status_code == 200
         prst = r.content
         assert len(prst) == 552
-        off = patchlib._model_rec_offset(bytearray(prst), patchlib.NS_CAT)
+        off = fmt.model_rec_offset(bytearray(prst), patchlib.NS_CAT)
         assert prst[off] == other_st  # N->S repointed to the chosen capture
-        assert prst[patchlib.CRC_OFF] == patchlib._crc8(prst[patchlib.CRC_OFF + 1 :])
+        assert prst[fmt.CRC_OFF] == fmt.crc8(prst[fmt.CRC_OFF + 1 :])
         # named after the target SnapTone
         st_name = next(
             s["name"]

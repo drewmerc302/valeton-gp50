@@ -869,6 +869,7 @@
           buildFilterBar();
           render();
           status.textContent = `✓ Loaded ${patches.length} presets from the device.`;
+          setTimeout(() => { $("scan-progress").hidden = true; }, 3000); // tidy up when done
         }
         $("scan-btn").disabled = false;
         return;

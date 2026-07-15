@@ -468,9 +468,47 @@
     return panel;
   }
 
+  // The action bar (download / write / live-edit / reset + status notes). Rendered
+  // at the TOP of the expanded detail so it stays visible without scrolling past a
+  // long block chain — otherwise Live edit gets lost below the fold.
+  function buildSaveBar(p) {
+    const bar = document.createElement("div");
+    bar.className = "save-bar";
+    bar.dataset.slot = p.slot;
+    const dl = document.createElement("button");
+    dl.type = "button"; dl.className = "save-edit"; dl.textContent = "⬇ Download edited .prst";
+    dl.addEventListener("click", () => downloadEdit(p));
+    const wr = document.createElement("button");
+    wr.type = "button"; wr.className = "write-dev"; wr.textContent = "⚡ Write to device";
+    wr.title = "Write this patch directly to the pedal (overwrites a slot)";
+    wr.addEventListener("click", () => writeToDevice(p));
+    const rst = document.createElement("button");
+    rst.type = "button"; rst.className = "linkish"; rst.textContent = "reset";
+    rst.addEventListener("click", () => { edits.delete(p.slot); renderPresets(); });
+    bar.appendChild(dl); bar.appendChild(wr);
+    // live-edit toggle (WebMIDI only): mirror changes to the pedal in real time
+    if (window.DeviceBridge && DeviceBridge.webmidiAvailable()) {
+      const live = document.createElement("button");
+      live.type = "button";
+      live.className = "live-toggle" + (liveSlot === p.slot ? " on" : "");
+      live.textContent = liveSlot === p.slot ? "● Live edit on" : "⚡ Live edit";
+      live.title = "Mirror edits to the pedal in real time over WebMIDI (writes slot " + p.slot + " on each change)";
+      live.addEventListener("click", () => toggleLiveEdit(p));
+      bar.appendChild(live);
+    }
+    bar.appendChild(rst);
+    const note = document.createElement("span");
+    note.className = "subtitle save-note";
+    const liveNoteEl = document.createElement("span");
+    liveNoteEl.className = "subtitle live-note";
+    bar.appendChild(note); bar.appendChild(liveNoteEl);
+    return bar;
+  }
+
   function renderDetail(p) {
     const d = document.createElement("div");
     d.className = "preset-detail";
+    d.appendChild(buildSaveBar(p)); // actions first — visible without scrolling
 
     // patch settings (editable VOL + BPM)
     const s = p.settings || {};
@@ -641,38 +679,6 @@
       d.appendChild(bd);
     });
 
-    // save bar
-    const bar = document.createElement("div");
-    bar.className = "save-bar";
-    bar.dataset.slot = p.slot;
-    const dl = document.createElement("button");
-    dl.type = "button"; dl.className = "save-edit"; dl.textContent = "⬇ Download edited .prst";
-    dl.addEventListener("click", () => downloadEdit(p));
-    const wr = document.createElement("button");
-    wr.type = "button"; wr.className = "write-dev"; wr.textContent = "⚡ Write to device";
-    wr.title = "Write this patch directly to the pedal (overwrites a slot)";
-    wr.addEventListener("click", () => writeToDevice(p));
-    const rst = document.createElement("button");
-    rst.type = "button"; rst.className = "linkish"; rst.textContent = "reset";
-    rst.addEventListener("click", () => { edits.delete(p.slot); renderPresets(); });
-    bar.appendChild(dl); bar.appendChild(wr);
-    // live-edit toggle (WebMIDI only): mirror changes to the pedal in real time
-    if (window.DeviceBridge && DeviceBridge.webmidiAvailable()) {
-      const live = document.createElement("button");
-      live.type = "button";
-      live.className = "live-toggle" + (liveSlot === p.slot ? " on" : "");
-      live.textContent = liveSlot === p.slot ? "● Live edit on" : "⚡ Live edit";
-      live.title = "Mirror edits to the pedal in real time over WebMIDI (writes slot " + p.slot + " on each change)";
-      live.addEventListener("click", () => toggleLiveEdit(p));
-      bar.appendChild(live);
-    }
-    bar.appendChild(rst);
-    const note = document.createElement("span");
-    note.className = "subtitle save-note";
-    const liveNoteEl = document.createElement("span");
-    liveNoteEl.className = "subtitle live-note";
-    bar.appendChild(note); bar.appendChild(liveNoteEl);
-    d.appendChild(bar);
     return d;
   }
 

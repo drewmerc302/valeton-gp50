@@ -886,8 +886,8 @@ input[type="range"]::-moz-range-thumb {
 .patch-set b { color: var(--text); font-variant-numeric: tabular-nums; min-width: 2.5em; }
 
 .save-bar {
-  display: flex; align-items: center; gap: 0.6rem;
-  margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed var(--border);
+  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  margin-bottom: 0.7rem; padding-bottom: 0.6rem; border-bottom: 1px dashed var(--border);
   opacity: 0.55;
 }
 .save-bar.dirty { opacity: 1; }

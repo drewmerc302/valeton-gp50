@@ -951,6 +951,13 @@ input[type="range"]::-moz-range-thumb {
 .save-bar:not(.dirty) .live-status,
 .save-bar:not(.dirty) .live-keep,
 .save-bar:not(.dirty) .live-restore { pointer-events: auto; }
+/* Clear preset: destructive (wipes the slot to blank) — red, pinned far right */
+.clear-preset {
+  margin-left: auto;
+  border: 1px solid #d8434a; background: transparent; color: var(--text);
+  border-radius: 6px; padding: 0.36rem 0.8rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+}
+.clear-preset:hover { background: color-mix(in srgb, #d8434a 18%, transparent); }
 
 .chip-row { display: flex; flex-wrap: wrap; gap: 0.3rem; flex: 1; justify-content: flex-end; min-width: 0; }
 .chip-row .chip.bypassed-chip { opacity: 0.38; }

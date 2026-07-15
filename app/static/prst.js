@@ -305,12 +305,31 @@
     return b;
   }
 
+  // Factory-default empty preset ("GP-50" blank), captured verbatim from the
+  // device's empty slots — all 23 empty factory slots are byte-identical, so this
+  // is the one canonical blank. Slot-independent (the slot is a write-time arg, not
+  // stored in the .prst), so the same bytes clear any slot. Used by "Clear Preset".
+  const BLANK_B64 = {
+    gp50: "R1AtNTAAAAAAAAAAAAAAAAAAAQCv/////0dQLTUwAAAAAAAAAAAAAAD/ABAAAQAEAAEAAAACAAQAR1A1MAAAEAABEAQACgAAAAIQBAAIAAAAAQA7AAEgAQAyAiAEAHgAAAADIAEAAAQgBAAAAAAABSAEAGQAAAAGIAEAAAcgAQAACCABAGQJIAEAAAogAQAAAgCGAQEwBAAAAAAAAjAKAAABAgkDBAUGBwgDMCgAGwAAAAAAAAAAAAADAQAABwEAAAo1AAABAAAABAAAAAsLAAAMAAAADwQwQAEAAKBBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAoEEAAEhCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgQgAAjEIAAEhCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPBBAABIQgAASEIAAAAAAAAAAAAAAAAAAAAAAAAAAAAASEIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEhCAAAAAAAAAAAAAEhCAAAAPwAASEIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAoEEAAPpDAADwQQAAAAAAAAAAAAAAAAAAAAAAAAAAAADwQQAAAAAAAEhCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEhCAABIQgAASEIAAEhCAABIQgAAAAAAAAAAAAAAAAMACgAAAAAAAAAAAAUF",
+  };
+  const b64bytes = (s) =>
+    typeof atob === "function"
+      ? Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
+      : Uint8Array.from(Buffer.from(s, "base64"));
+  // A fresh copy of the factory-default blank .prst for a device (default GP-50).
+  function blankPrst(key = "gp50") {
+    const b64 = BLANK_B64[typeof key === "object" && key ? key.key : key];
+    if (!b64) throw new Error(`no factory blank preset for device ${key}`);
+    return b64bytes(b64);
+  }
+
   const API = {
     NAME_OFF, BODY_OFF, NAME_LEN, CRC_OFF, SETTINGS_OFF, N_BLOCKS, N_PARAM_SLOTS,
     GP50, GP5, DEVICES, profileFor, bodyLen,
     crc8, refixCrc, detect, readName, writeName, rebuild,
     modelsOffset, modelRecords, modelRecOffset, bypassOffset, paramsOffset, bypassMask, paramFloats, fsOffset, findTLV,
     readVolBpm, readFootswitches, checkConvertible, convert, applyEdits,
+    BLANK_B64, blankPrst,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   else root.PRST = API;

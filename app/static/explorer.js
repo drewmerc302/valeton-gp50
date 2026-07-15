@@ -521,7 +521,47 @@
     const liveNoteEl = document.createElement("span");
     liveNoteEl.className = "subtitle live-note";
     bar.appendChild(note); bar.appendChild(liveNoteEl);
+    // Clear Preset (far right): wipe this slot back to the factory "GP-50" blank.
+    // WebMIDI-only (writes the pedal directly), like Live edit.
+    if (window.DeviceBridge && DeviceBridge.webmidiAvailable()) {
+      const clr = document.createElement("button");
+      clr.type = "button"; clr.className = "clear-preset"; clr.textContent = "🗑 Clear preset";
+      clr.title = `Overwrite slot ${p.slot} with a blank "GP-50" preset (writes the pedal)`;
+      clr.addEventListener("click", () => clearPreset(p));
+      bar.appendChild(clr);
+    }
     return bar;
+  }
+
+  // Clear Preset: overwrite the slot with the factory-default "GP-50" blank. Writes
+  // the pedal directly over WebMIDI (like Live edit); confirmed first. Drops any
+  // pending edits and exits live mode for the slot, then syncs the cache to blank.
+  async function clearPreset(p) {
+    if (!(window.DeviceBridge && DeviceBridge.webmidiAvailable())) {
+      UI.toast("Clear needs Chrome or Edge (WebMIDI).", "err");
+      return;
+    }
+    const ok = await UI.confirmDialog(
+      `Clear slot ${p.slot} "${curName(p)}" back to a blank "GP-50" preset? This overwrites the slot on the pedal and can't be undone from here. Make sure Valeton Suite is closed.`,
+      "Clear preset");
+    if (!ok) return;
+    const note = listEl.querySelector(`.save-bar[data-slot="${p.slot}"] .save-note`);
+    try {
+      if (!DeviceBridge.connected()) { if (note) note.textContent = "Connecting to pedal…"; await DeviceBridge.connect(); }
+      const blank = window.PRST.blankPrst((inventoryDevice && inventoryDevice.key) || "gp50");
+      if (note) note.textContent = `Clearing slot ${p.slot}…`;
+      const r = await withTimeout(
+        DeviceBridge.writeSlot(p.slot, blank), 15000,
+        "clear timed out — is this tab in the background? (bring it to the front)");
+      edits.delete(p.slot);
+      if (liveSlot === p.slot) { liveSlot = null; liveBase = null; }
+      await syncSlotCache(p.slot, blank);
+      renderPresets();
+      UI.toast(`Cleared slot ${p.slot} to a blank preset (${r.acks}/${r.sent} ACKs).`, "ok");
+    } catch (err) {
+      if (note) note.textContent = `Clear failed: ${err.message}`;
+      UI.toast(`Clear failed: ${err.message}`, "err");
+    }
   }
 
   function renderDetail(p) {

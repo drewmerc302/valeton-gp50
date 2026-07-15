@@ -111,6 +111,18 @@ for (const rec of corpus) {
   }
 }
 
+// factory-default blank ("Clear Preset"): must be a valid 552-byte GP-50 .prst,
+// named "GP-50", with a self-consistent CRC, and a fresh copy per call.
+{
+  const blank = PRST.blankPrst("gp50");
+  check("blankPrst", "len", blank.length === 552, `${blank.length}`);
+  check("blankPrst", "detect", PRST.detect(blank).key === "gp50");
+  check("blankPrst", "name", PRST.readName(blank) === "GP-50", `"${PRST.readName(blank)}"`);
+  check("blankPrst", "crc", blank[PRST.CRC_OFF] === PRST.crc8(blank.subarray(PRST.CRC_OFF + 1)));
+  const b2 = PRST.blankPrst("gp50"); b2[0] = 0;
+  check("blankPrst", "freshCopy", blank[0] === 0x47, "mutating one copy changed another");
+}
+
 console.log(`\ncorpus: ${corpus.length} presets`);
 console.log(`checks: ${pass + fail}   pass: ${pass}   fail: ${fail}`);
 if (fail) {

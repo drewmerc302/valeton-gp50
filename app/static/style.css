@@ -890,6 +890,14 @@ input[type="range"]::-moz-range-thumb {
    but still clickable (the JS swallows it + warns) so it can't collapse the row */
 .fs-toggle.full { opacity: 0.4; cursor: not-allowed; }
 
+.name-row { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.7rem; }
+.name-row label { font-size: 0.72rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.name-input {
+  flex: 1; max-width: 22rem; font: inherit; font-size: 0.95rem; font-weight: 700;
+  padding: 0.4rem 0.7rem; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--chip); color: var(--text);
+}
+.name-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
 .patch-settings { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
 .patch-set { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--muted); }
 .patch-set input[type="range"] { accent-color: var(--accent); width: 120px; }

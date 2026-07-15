@@ -298,6 +298,9 @@
       }
     }
 
+    // 5. patch name (16-byte name region)
+    if (edits.name != null) writeName(b, String(edits.name));
+
     refixCrc(b);
     return b;
   }

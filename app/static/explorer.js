@@ -223,13 +223,18 @@
 
   function getEdit(slot) {
     if (!edits.has(slot))
-      edits.set(slot, { params: {}, bypass: {}, settings: {}, footswitches: null, models: {}, override: {} });
+      edits.set(slot, { params: {}, bypass: {}, settings: {}, footswitches: null, models: {}, override: {}, name: null });
     return edits.get(slot);
   }
   function isDirty(slot) {
     const e = edits.get(slot);
     return e && (Object.keys(e.params).length || Object.keys(e.bypass).length ||
-      Object.keys(e.settings).length || Object.keys(e.models).length || e.footswitches);
+      Object.keys(e.settings).length || Object.keys(e.models).length || e.footswitches || e.name != null);
+  }
+  // Current name for a preset — a pending rename wins over the stored name.
+  function curName(p) {
+    const e = edits.get(p.slot);
+    return e && e.name != null ? e.name : p.name;
   }
 
   // Effective block view: if the user swapped the model, render the NEW model's
@@ -523,6 +528,29 @@
     const d = document.createElement("div");
     d.className = "preset-detail";
     d.appendChild(buildSaveBar(p)); // actions first — visible without scrolling
+
+    // editable preset name (16-char device limit) — writes with the other edits
+    const nameRow = document.createElement("div");
+    nameRow.className = "name-row";
+    const nameLbl = document.createElement("label");
+    nameLbl.textContent = "Preset name";
+    const nameInput = document.createElement("input");
+    // the device caps patch names at 10 chars (factory names top out at 10)
+    nameInput.type = "text"; nameInput.className = "name-input"; nameInput.maxLength = 10;
+    nameInput.title = "Up to 10 characters (device limit)";
+    nameInput.value = curName(p);
+    nameInput.setAttribute("aria-label", "Preset name");
+    nameInput.addEventListener("input", () => {
+      const e = getEdit(p.slot);
+      const v = nameInput.value;
+      e.name = v === p.name ? null : v; // unchanged = no edit
+      refreshSaveBar(p);
+      const hdr = nameInput.closest(".preset-row") && nameInput.closest(".preset-row").querySelector(".preset-name");
+      if (hdr) hdr.textContent = v || p.name; // live-update the header without a re-render
+    });
+    nameInput.addEventListener("change", () => liveKick(p.slot)); // commit on blur/enter
+    nameRow.appendChild(nameLbl); nameRow.appendChild(nameInput);
+    d.appendChild(nameRow);
 
     // patch settings (editable VOL + BPM)
     const s = p.settings || {};
@@ -872,10 +900,12 @@
     }
   }
 
-  // The edit spec (params/bypass/settings/footswitches/models) for applyEdits.
+  // The edit spec (params/bypass/settings/footswitches/models/name) for applyEdits.
   function editsSpec(slot) {
     const e = getEdit(slot);
-    return { params: e.params, bypass: e.bypass, settings: e.settings, footswitches: e.footswitches || {}, models: e.models || {} };
+    const spec = { params: e.params, bypass: e.bypass, settings: e.settings, footswitches: e.footswitches || {}, models: e.models || {} };
+    if (e.name != null) spec.name = e.name;
+    return spec;
   }
 
   function liveKick(slot) {
@@ -922,6 +952,18 @@
     if (r && r.ok && r.cache_updated) await loadInventory();
   }
 
+  // Sync a slot's cache to bytes we already have. Static shim: push them in — instant,
+  // and keeps the new NAME (a 0x41 body re-read can't recover a renamed patch's name).
+  // Backend: fall back to a device re-read.
+  async function syncSlotCache(slot, prstBytes) {
+    if (window.__staticApi && window.__staticApi.setSlotBytes) {
+      window.__staticApi.setSlotBytes(slot, prstBytes);
+      await loadInventory().catch(() => {});
+    } else {
+      await refreshSlotFromDevice(slot).catch(() => {});
+    }
+  }
+
   // Restore original: write the pre-live snapshot back to the pedal, undoing every
   // live change, then exit live mode. This is the safety net for live editing.
   async function restoreLive(slot) {
@@ -938,7 +980,7 @@
     }
     edits.delete(slot);
     liveSlot = null; liveBase = null;
-    await refreshSlotFromDevice(slot).catch(() => {});
+    await syncSlotCache(slot, base);
     renderPresets();
     UI.toast(`Restored slot ${slot} to its original settings.`, "ok");
   }
@@ -950,16 +992,16 @@
     if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
     livePending = false;
     liveNote(slot, "Committing changes to the pedal…");
+    const edited = window.PRST.applyEdits(liveBase, editsSpec(slot)); // ensure the very latest is written
     try {
-      const edited = window.PRST.applyEdits(liveBase, editsSpec(slot)); // ensure the very latest is written
       await withTimeout(DeviceBridge.writeSlot(slot, edited), 15000, "keep timed out (foreground the tab)");
     } catch (e) {
       liveNote(slot, `Keep failed: ${e.message}`, "err");
       return;
     }
-    await refreshSlotFromDevice(slot).catch(() => {});
     edits.delete(slot);
     liveSlot = null; liveBase = null;
+    await syncSlotCache(slot, edited);
     renderPresets();
     UI.toast(`Kept your changes on slot ${slot}.`, "ok");
   }
@@ -1002,7 +1044,7 @@
       const head = document.createElement("div");
       head.className = "preset-head";
       head.innerHTML =
-        `<span class="preset-num">#${p.slot}</span> <span class="preset-name">${p.name}</span>` +
+        `<span class="preset-num">#${p.slot}</span> <span class="preset-name">${curName(p).replace(/</g, "&lt;")}</span>` +
         (isActive ? ' <span class="badge active-badge">● Active on pedal</span>' : "") +
         (p.uses_snaptone ? ' <span class="badge st">SnapTone</span>' : "");
       // full block chain, right-aligned, bypassed blocks dimmed (matches the Designer)

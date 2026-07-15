@@ -201,7 +201,7 @@
   }
 
   function editsFrom(body) {
-    return { params: body.params || {}, bypass: body.bypass || {}, settings: body.settings || {}, footswitches: body.footswitches || {}, models: body.models || {} };
+    return { params: body.params || {}, bypass: body.bypass || {}, settings: body.settings || {}, footswitches: body.footswitches || {}, models: body.models || {}, name: body.name };
   }
 
   async function handleWrite(body) {
@@ -314,6 +314,14 @@
     return realFetch(input, init);
   };
 
-  root.__staticApi = { handle, ensureLoaded }; // for tests
+  // Push exact bytes into the cache (used by the Explorer after a live commit/restore
+  // so the row reflects them — incl. a rename — without a slow, name-losing re-read).
+  function setSlotBytes(slot, prst) {
+    if (!store) return;
+    const u = prst instanceof Uint8Array ? prst : Uint8Array.from(prst);
+    store.bytes.set(slot, u); store.names.set(slot, PRST.readName(u)); invalidate();
+  }
+
+  root.__staticApi = { handle, ensureLoaded, setSlotBytes }; // for tests + Explorer cache sync
   console.log("[static_api] active — /api/device/* served client-side");
 })(typeof self !== "undefined" ? self : this);

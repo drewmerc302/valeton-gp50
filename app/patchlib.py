@@ -626,6 +626,10 @@ def apply_edits_bytes(b: bytearray, edits: dict) -> None:
                         mask |= 1 << int(bi)
                     struct.pack_into("<I", b, off + slot_off, mask)
 
+    # 5. patch name (16-byte name region at NAME_OFF)
+    if edits.get("name") is not None:
+        fmt.write_name(b, str(edits["name"]))
+
     fmt.refix_crc(b)
 
 

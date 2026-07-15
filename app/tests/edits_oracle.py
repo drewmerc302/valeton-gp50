@@ -27,6 +27,12 @@ EDIT_SETS = [
     {"label": "settings-clamp", "edits": {"settings": {"patch_vol": 250}}},
     {"label": "footswitches", "edits": {"footswitches": {"fs1": [0, 2], "fs2": [5]}}},
     {"label": "models", "edits": {"models": {"0": 0x0A00003C, "4": 0x01000001}}},
+    {"label": "name", "edits": {"name": "My Lead Tone"}},
+    {"label": "name-long", "edits": {"name": "ThisNameIsWayTooLongForTheField"}},
+    {
+        "label": "name+params",
+        "edits": {"name": "Clean 2", "params": {"1": {"0": 33.0}}},
+    },
     {
         "label": "combined",
         "edits": {

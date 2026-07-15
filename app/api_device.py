@@ -170,6 +170,7 @@ class EditRequest(BaseModel):
     settings: dict = {}  # {patch_vol, bpm}
     footswitches: dict[str, list[int]] = {}  # {"fs1": [block_idx], "fs2": [...]}
     models: dict[int, int] = {}  # {block_index: fxid} — swap a block's model
+    name: str | None = None  # rename the patch (16-char device limit)
 
 
 class BlockLibEntry(BaseModel):
@@ -296,6 +297,7 @@ def write_to_device(req: WriteRequest) -> dict:
                 "settings": req.settings,
                 "footswitches": req.footswitches,
                 "models": req.models,
+                "name": req.name,
             },
         )
     except ValueError as e:
@@ -361,6 +363,7 @@ def edit(req: EditRequest) -> Response:
                 "settings": req.settings,
                 "footswitches": req.footswitches,
                 "models": req.models,
+                "name": req.name,
             },
         )
     except ValueError as e:

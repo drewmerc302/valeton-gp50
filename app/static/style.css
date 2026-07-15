@@ -888,41 +888,47 @@ input[type="range"]::-moz-range-thumb {
 .save-bar {
   display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
   margin-bottom: 0.7rem; padding-bottom: 0.6rem; border-bottom: 1px dashed var(--border);
-  opacity: 0.55;
 }
-.save-bar.dirty { opacity: 1; }
+/* Download/Write only apply with pending edits — dim just those when clean,
+   not the whole bar (Live / Keep / Restore stay bright and inviting). */
+.save-bar:not(.dirty) .save-edit,
+.save-bar:not(.dirty) .write-dev { opacity: 0.4; pointer-events: none; }
+/* Download: neutral — it just makes a file, tertiary action */
 .save-edit {
-  border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--text); border-radius: 6px; padding: 0.3rem 0.7rem; font-size: 0.82rem; cursor: pointer;
+  border: 1px solid var(--border); background: color-mix(in srgb, var(--text) 9%, transparent);
+  color: var(--text); border-radius: 6px; padding: 0.36rem 0.8rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;
 }
-.save-bar:not(.dirty) .save-edit { pointer-events: none; }
+.save-edit:hover { background: color-mix(in srgb, var(--text) 18%, transparent); }
 .write-dev {
-  border: 1px solid #d8434a; background: color-mix(in srgb, #d8434a 16%, transparent);
-  color: var(--text); border-radius: 6px; padding: 0.3rem 0.7rem; font-size: 0.82rem; cursor: pointer;
+  border: 1px solid #d8434a; background: color-mix(in srgb, #d8434a 24%, transparent);
+  color: var(--text); border-radius: 6px; padding: 0.36rem 0.8rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;
 }
-.write-dev:hover { background: color-mix(in srgb, #d8434a 28%, transparent); }
-.save-bar:not(.dirty) .write-dev { pointer-events: none; }
+.write-dev:hover { background: color-mix(in srgb, #d8434a 38%, transparent); }
 .save-note { font-size: 0.78rem; }
+/* Live edit / Keep: green = safe + inviting; pops against the red app accent */
 .live-toggle {
-  border: 1px solid var(--accent); background: transparent; color: var(--text);
-  border-radius: 6px; padding: 0.3rem 0.7rem; font-size: 0.82rem; cursor: pointer;
+  border: 1px solid #2fa36b; background: color-mix(in srgb, #2fa36b 20%, transparent); color: var(--text);
+  border-radius: 6px; padding: 0.36rem 0.8rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;
 }
-.live-toggle.on { background: color-mix(in srgb, var(--accent) 22%, transparent); font-weight: 700; }
+.live-toggle:hover { background: color-mix(in srgb, #2fa36b 32%, transparent); }
+.live-toggle.on { background: color-mix(in srgb, #2fa36b 26%, transparent); font-weight: 700; }
 /* live-edit is enabled BEFORE any edit, so it must stay usable on a clean bar */
 .save-bar:not(.dirty) .live-toggle { pointer-events: auto; }
 .live-note { font-size: 0.78rem; }
 .live-note.ok { color: var(--accent); }
 .live-note.err { color: #d8434a; }
-.live-status { font-weight: 700; color: var(--accent); font-size: 0.82rem; }
+.live-status { font-weight: 700; color: #2fa36b; font-size: 0.82rem; }
 .live-keep {
-  border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 22%, transparent);
-  color: var(--text); border-radius: 6px; padding: 0.3rem 0.7rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  border: 1px solid #2fa36b; background: color-mix(in srgb, #2fa36b 26%, transparent);
+  color: var(--text); border-radius: 6px; padding: 0.36rem 0.8rem; font-size: 0.82rem; font-weight: 700; cursor: pointer;
 }
+.live-keep:hover { background: color-mix(in srgb, #2fa36b 38%, transparent); }
+/* Restore: red = it overwrites the pedal (undo the live changes) */
 .live-restore {
   border: 1px solid #d8434a; background: transparent; color: var(--text);
-  border-radius: 6px; padding: 0.3rem 0.7rem; font-size: 0.82rem; cursor: pointer;
+  border-radius: 6px; padding: 0.36rem 0.8rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;
 }
-.live-restore:hover { background: color-mix(in srgb, #d8434a 16%, transparent); }
+.live-restore:hover { background: color-mix(in srgb, #d8434a 18%, transparent); }
 /* live controls stay usable on a clean (not-dirty) bar */
 .save-bar:not(.dirty) .live-status,
 .save-bar:not(.dirty) .live-keep,

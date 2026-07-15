@@ -68,16 +68,20 @@ Keep the main repo **private with full history** (local + GitHub-private). Host 
 - **Source privacy:** PARKED. Leaning: keep main private, host `dist/` only.
 - **Host:** PARKED. Leaning: Cloudflare Pages, direct upload.
 
-## Non-hosting gotchas to handle before ship
+## Pre-ship gotchas — HANDLED
 
-- Tell testers **Chrome/Edge only** — Safari (Mac default) breaks silently.
-- The bundle publishes **this pedal's preset + SnapTone/IR names** (the `device_scan`
-  snapshot is the browse seed). Rebuild from `presetExports/` for the factory set if
-  preferred (edit `scripts/build_static_data.mjs` source dir).
-- **No error visibility** on a hosted beta. Consider a tiny opt-in error → mailto /
-  logger so tester bugs surface.
-- Testers must use the **`https://`** URL; a bookmarked `http://` silently breaks
-  WebMIDI.
+- **Chrome/Edge only** → `env_check.js` shows a dismissible modal on Safari/Firefox
+  (browsing still works; device features are the ones that need WebMIDI). Test the
+  modal anywhere with `?envtest=browser`.
+- **Bundle content** → `build_static_data.mjs` now defaults to the **factory** set
+  (`presetExports/` + empty `bank_map` = no custom names). `--live` bundles your
+  pedal (`device_scan/` + your SnapTone/IR names) for personal use.
+- **Error visibility** → `error_report.js` catches uncaught errors and shows an
+  opt-in toast with a **Report** button that opens a prefilled email (error + stack
+  + URL + browser). Set `REPORT_EMAIL` in that file. Test with
+  `window.__errorReport.report({error:new Error("x")})`.
+- **http:// silently breaks WebMIDI** → `env_check.js` also detects an insecure
+  context and offers to switch to `https`. Test with `?envtest=insecure`.
 
 ## Ready to run (once the decision is made) — Cloudflare Pages direct upload
 

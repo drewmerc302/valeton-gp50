@@ -19,20 +19,29 @@ const repo = resolve(here, "..");
 const PRST = (await import(resolve(repo, "app/static/prst.js"))).default
   || require(resolve(repo, "app/static/prst.js"));
 
+// --live bundles YOUR pedal (device_scan/ + your SnapTone/IR names). Default is
+// the shippable FACTORY set: presetExports/ + an empty bank_map (no custom names).
+const LIVE = process.argv.includes("--live");
+
 const outDir = resolve(repo, "app/static/data");
 mkdirSync(outDir, { recursive: true });
 
-// model catalogs + bank_map
-for (const f of ["fxid_ring.json", "fxid_ring_gp5.json", "bank_map.json"]) {
+// model catalogs (always) + bank_map (only in --live; factory ships empty)
+for (const f of ["fxid_ring.json", "fxid_ring_gp5.json"]) {
   const src = resolve(repo, "patch", f);
   if (existsSync(src)) copyFileSync(src, resolve(outDir, f));
   else console.warn(`(skip missing ${f})`);
 }
+const bankSrc = resolve(repo, "patch", "bank_map.json");
+if (LIVE && existsSync(bankSrc)) copyFileSync(bankSrc, resolve(outDir, "bank_map.json"));
+else writeFileSync(resolve(outDir, "bank_map.json"), JSON.stringify({ source: "factory (no custom names)", snaptone: {}, ir: {} }));
 
 // preset snapshot
 function sourceDir() {
-  const scan = resolve(repo, "device_scan");
-  if (existsSync(scan) && readdirSync(scan).some((f) => f.endsWith(".prst"))) return scan;
+  if (LIVE) {
+    const scan = resolve(repo, "device_scan");
+    if (existsSync(scan) && readdirSync(scan).some((f) => f.endsWith(".prst"))) return scan;
+  }
   return resolve(repo, "presetExports");
 }
 const dir = sourceDir();
@@ -55,4 +64,5 @@ writeFileSync(resolve(outDir, "presets.json"), JSON.stringify({
   count: presets.length,
   presets,
 }));
-console.log(`wrote app/static/data/presets.json (${presets.length} presets, device ${deviceKey}) + catalogs`);
+console.log(`wrote app/static/data/presets.json (${presets.length} presets, device ${deviceKey}, ${LIVE ? "LIVE snapshot" : "factory"}) + catalogs`);
+if (!LIVE) console.log("  factory bundle: presetExports/ + empty bank_map (no custom names). Use --live to bundle your pedal.");

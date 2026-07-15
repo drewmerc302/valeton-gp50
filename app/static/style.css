@@ -959,6 +959,61 @@ input[type="range"]::-moz-range-thumb {
 }
 .clear-preset:hover { background: color-mix(in srgb, #d8434a 18%, transparent); }
 
+/* --- preset reordering ---------------------------------------------------- */
+.reorder-btn {
+  border: 1px solid var(--border); background: var(--card-bg); color: var(--text);
+  border-radius: 8px; padding: 0.4rem 0.8rem; font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+}
+.reorder-btn:hover { border-color: var(--accent); }
+/* per-row grip, left of the slot number */
+.reorder-grip {
+  flex: none; border: none; background: transparent; color: var(--muted);
+  font-size: 0.9rem; line-height: 1; cursor: grab; padding: 0 0.15rem; opacity: 0.4;
+}
+.reorder-grip:hover { opacity: 1; color: var(--text); }
+
+.reorder-card {
+  max-width: 680px; width: calc(100% - 2rem); max-height: 86vh;
+  display: flex; flex-direction: column; text-align: left; padding: 1.2rem 1.2rem 1rem;
+}
+.reorder-head h2 { margin: 0 0 0.3rem; }
+.reorder-head .subtitle { margin: 0 0 0.8rem; }
+.reorder-body {
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
+}
+.reorder-list { list-style: none; margin: 0; padding: 0.3rem; overflow-y: auto; height: 56vh; }
+.reorder-row {
+  display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.55rem;
+  border-radius: 8px; background: var(--card-bg); border: 1px solid var(--border);
+  margin-bottom: 0.3rem; cursor: grab;
+}
+.reorder-row:last-child { margin-bottom: 0; }
+.reorder-row.dragging { opacity: 0.5; cursor: grabbing; }
+.reorder-row.moved { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--card-bg)); }
+.reorder-row.focus-flash { box-shadow: 0 0 0 2px var(--accent); }
+.reorder-grip2 { color: var(--muted); font-size: 0.85rem; flex: none; }
+.reorder-slot { font-variant-numeric: tabular-nums; font-weight: 800; color: var(--text); min-width: 2.6em; flex: none; }
+.reorder-info { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.reorder-line1 { display: flex; align-items: baseline; gap: 0.45rem; min-width: 0; }
+.reorder-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reorder-orig { color: var(--muted); font-size: 0.72rem; flex: none; }
+.reorder-summary { color: var(--muted); font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.reorder-status { padding: 0.55rem 0.2rem 0.2rem; font-variant-numeric: tabular-nums; }
+.reorder-foot { padding-top: 0.5rem; }
+.reorder-foot-btns { display: flex; justify-content: flex-end; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+.reorder-backup {
+  margin-right: auto; border: 1px solid var(--border); background: var(--chip); color: var(--text);
+  border-radius: 8px; padding: 0.5rem 0.9rem; font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+}
+.reorder-backup:hover { border-color: var(--accent); }
+.reorder-progress { display: flex; align-items: center; gap: 0.75rem; padding-top: 0.4rem; }
+.reorder-progress .scan-bar { flex: 1; width: auto; }
+.reorder-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.2s ease; }
+.reorder-prog-text { flex: none; font-variant-numeric: tabular-nums; }
+.reorder-fail-msg { color: #d8434a; font-size: 0.85rem; margin: 0 0 0.6rem; }
+
 .chip-row { display: flex; flex-wrap: wrap; gap: 0.3rem; flex: 1; justify-content: flex-end; min-width: 0; }
 .chip-row .chip.bypassed-chip { opacity: 0.38; }
 .chip {

@@ -1070,6 +1070,377 @@
     });
   }
 
+  // --- preset reordering (batched, minimal-write) ----------------------------
+  // Rearrange presets across slots in memory, then commit as ONE finalize that
+  // writes ONLY the slots whose content changed (writes = displaced presets, the
+  // provable minimum). Because every write comes from an immutable pre-reorder
+  // snapshot, there's no temp-slot juggling and the write order doesn't matter.
+  // Requires a fresh full-bank snapshot first (so each preset moves with its
+  // current on-device settings) and the static WebMIDI app.
+
+  let reorderSnapshot = null; // { bytes: {slot->Uint8Array}, names: {slot->str}, takenAt }
+  // TRUE only after a real device scan THIS page load. The snapshot lives in memory
+  // (the shim's store.bytes) and resets to the factory bundle on reload, while the
+  // LAST_SCAN_KEY timestamp persists in localStorage — so the "reuse recent snapshot"
+  // fast path must gate on this, never on the timestamp alone, or a post-reload
+  // reorder would rearrange BUNDLE bytes and overwrite the user's real presets.
+  let bankScanned = false;
+  const REORDER_WRITE_MS = 600; // measured per-slot write (~0.5–0.6s) — for time estimates
+  const RECENT_SNAP_MS = 2 * 60 * 1000; // a scan this fresh can be reused without rescanning
+
+  const bytesToB64 = (u) => btoa(String.fromCharCode.apply(null, u));
+  const mkBtn = (text, cls) => { const b = document.createElement("button"); b.type = "button"; b.className = cls; b.textContent = text; return b; };
+  const fmtDur = (ms) => { const s = Math.round(ms / 1000); if (s < 60) return `${s}s`; return `${Math.floor(s / 60)}m ${s % 60}s`; };
+  function eqBytes(a, z) { if (!a || !z || a.length !== z.length) return false; for (let i = 0; i < a.length; i++) if (a[i] !== z[i]) return false; return true; }
+
+  // Pure minimal-write plan: order[dest] = the ORIGIN slot whose preset should end
+  // up at `dest`. Returns [{slot, from, bytes}] for only the destinations whose
+  // assigned preset differs (by bytes) from what's there now. Two byte-identical
+  // presets (e.g. blanks) swapping positions correctly produce no write.
+  function planReorder(snapBytes, order) {
+    const writes = [];
+    for (let dest = 0; dest < order.length; dest++) {
+      const bytes = snapBytes[order[dest]];
+      if (!eqBytes(bytes, snapBytes[dest])) writes.push({ slot: dest, from: order[dest], bytes });
+    }
+    return writes;
+  }
+
+  function reorderSummary(slot) {
+    const p = patches.find((x) => x.slot === slot);
+    if (!p) return "";
+    const chain = p.blocks.filter((b) => b.active && b.model).map((b) => (officialOn() && b.official ? b.official : b.model));
+    return chain.slice(0, 4).join(" · ") || "empty";
+  }
+
+  // Entry: gate → snapshot dialog → (scan) → open the reorder modal.
+  async function openReorder(focusSlot) {
+    if (!(window.DeviceBridge && DeviceBridge.webmidiAvailable())) { UI.toast("Reorder needs Chrome or Edge (WebMIDI).", "err"); return; }
+    if (!window.__staticApi || !window.__staticApi.getAllSlotBytes) { UI.toast("Reorder needs the static WebMIDI app.", "err"); return; }
+    try { if (!DeviceBridge.connected()) await DeviceBridge.connect(); }
+    catch (e) { UI.toast(`Connect the pedal first: ${e.message}`, "err"); return; }
+
+    const choice = await reorderSnapshotDialog();
+    if (choice === "cancel") return;
+    if (choice === "fresh") { if (!(await runReorderScan())) return; }
+
+    const all = window.__staticApi.getAllSlotBytes();
+    const slots = all ? Object.keys(all).map(Number).sort((a, z) => a - z) : [];
+    if (slots.length !== 100 || slots[0] !== 0 || slots[99] !== 99) {
+      UI.toast("Snapshot is incomplete — take a fresh snapshot and try again.", "err");
+      return;
+    }
+    reorderSnapshot = { bytes: all, names: {}, takenAt: Date.now() };
+    for (const slot of slots) reorderSnapshot.names[slot] = window.PRST.readName(all[slot]);
+    await loadInventory().catch(() => {}); // so the row chain summaries match the snapshot
+    openReorderModal(focusSlot);
+  }
+
+  // Explain the up-front snapshot (the user's decision: force a fresh scan, but ask
+  // first). Offers reuse only when a real device scan is very recent.
+  function reorderSnapshotDialog() {
+    return new Promise((resolve) => {
+      const last = Number(localStorage.getItem(LAST_SCAN_KEY));
+      const fresh = bankScanned && last && (Date.now() - last) < RECENT_SNAP_MS;
+      const ov = document.createElement("div");
+      ov.className = "modal-overlay";
+      ov.innerHTML = `
+        <div class="modal-card" style="text-align:left;max-width:440px">
+          <h2 style="margin:0 0 .6rem">Reorder presets</h2>
+          <p class="modal-msg" style="margin:0 0 1.2rem">
+            Preset reordering is fully supported. First we take a clean snapshot of all
+            100 presets so every one moves with its current settings. It reads one preset
+            at a time and takes about 90 seconds.
+          </p>
+          <div class="modal-actions" style="justify-content:flex-end;gap:.6rem">
+            <button type="button" class="modal-btn" data-c="cancel">Cancel</button>
+            ${fresh ? `<button type="button" class="modal-btn" data-c="recent">Use snapshot from ${relTime(last)}</button>` : ""}
+            <button type="button" class="modal-btn primary" data-c="fresh">Take snapshot &amp; reorder</button>
+          </div>
+        </div>`;
+      document.body.appendChild(ov);
+      ov.addEventListener("click", (e) => {
+        const c = e.target && e.target.getAttribute && e.target.getAttribute("data-c");
+        if (c) { ov.remove(); resolve(c); }
+        else if (e.target === ov) { ov.remove(); resolve("cancel"); }
+      });
+    });
+  }
+
+  // Awaitable full-bank scan that drives the shared scan-progress UI. Resolves
+  // true on success (snapshot in the cache), false on failure.
+  async function runReorderScan() {
+    $("scan-progress").hidden = false;
+    $("scan-fill").style.width = "0%";
+    $("scan-status").textContent = "Starting snapshot…";
+    try {
+      const r = await UI.jpost("/api/device/scan", {});
+      if (!r.ok) throw new Error(r.error || "could not start scan");
+    } catch (e) { $("scan-status").textContent = `Snapshot failed: ${e.message}`; return false; }
+    for (;;) {
+      await sleep(700);
+      let st;
+      try { st = await UI.jget("/api/device/scan/status"); } catch { continue; }
+      const pct = st.total ? Math.round((st.done / st.total) * 100) : 0;
+      $("scan-fill").style.width = `${pct}%`;
+      $("scan-status").textContent = st.error
+        ? `Snapshot failed: ${st.error}`
+        : `Snapshot ${st.done}/${st.total}${st.current ? ` — ${st.current}` : ""}${st.errors ? ` (${st.errors} skipped)` : ""}`;
+      if (!st.running) {
+        if (st.error) return false;
+        localStorage.setItem(LAST_SCAN_KEY, String(Date.now()));
+        bankScanned = true;
+        await loadInventory();
+        updateDeviceHeader();
+        render();
+        $("scan-status").textContent = `✓ Snapshot ready (${st.written || st.done} presets).`;
+        setTimeout(() => { $("scan-progress").hidden = true; }, 2000);
+        return true;
+      }
+    }
+  }
+
+  function closeReorder(modal) { modal.remove(); reorderSnapshot = null; }
+
+  function buildReorderRow(slot) {
+    const li = document.createElement("li");
+    li.className = "reorder-row";
+    li.draggable = true;
+    li.__item = { origSlot: slot };
+    li.innerHTML =
+      `<span class="reorder-grip2" aria-hidden="true">☰</span>` +
+      `<span class="reorder-slot"></span>` +
+      `<span class="reorder-info"><span class="reorder-line1">` +
+      `<span class="reorder-name"></span> <span class="reorder-orig"></span></span>` +
+      `<span class="reorder-summary"></span></span>`;
+    li.querySelector(".reorder-name").textContent = reorderSnapshot.names[slot] || `slot ${slot}`;
+    li.querySelector(".reorder-orig").textContent = `was #${slot}`;
+    li.querySelector(".reorder-summary").textContent = reorderSummary(slot);
+    return li;
+  }
+
+  const currentOrder = (list) => [...list.children].map((r) => r.__item.origSlot);
+  function renumber(list) { [...list.children].forEach((r, i) => { const b = r.querySelector(".reorder-slot"); if (b) b.textContent = "#" + i; }); }
+
+  function updateReorderStatus(list, statusEl, finalize) {
+    const writes = planReorder(reorderSnapshot.bytes, currentOrder(list));
+    const changed = new Set(writes.map((w) => w.slot));
+    [...list.children].forEach((r, idx) => r.classList.toggle("moved", changed.has(idx)));
+    const n = writes.length;
+    statusEl.textContent = n
+      ? `${n} preset${n > 1 ? "s" : ""} will be written · ≈ ${fmtDur(n * REORDER_WRITE_MS)}`
+      : "No changes yet — drag a preset to a new slot.";
+    finalize.disabled = n === 0;
+    finalize.textContent = n ? `Finalize — write ${n}` : "Finalize";
+  }
+
+  function dragAfter(list, y) {
+    const rows = [...list.querySelectorAll(".reorder-row:not(.dragging)")];
+    let best = { offset: -Infinity, el: null };
+    for (const row of rows) {
+      const box = row.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > best.offset) best = { offset, el: row };
+    }
+    return best.el;
+  }
+  function autoscroll(list, y) {
+    const box = list.getBoundingClientRect(), M = 44;
+    if (y - box.top < M) list.scrollTop -= 10;
+    else if (box.bottom - y < M) list.scrollTop += 10;
+  }
+
+  function wireReorderDrag(list, statusEl, finalize) {
+    list.addEventListener("dragstart", (e) => {
+      const row = e.target.closest(".reorder-row");
+      if (!row) return;
+      row.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", String(row.__item.origSlot)); } catch { /* Safari */ }
+    });
+    list.addEventListener("dragend", (e) => {
+      const row = e.target.closest(".reorder-row");
+      if (row) row.classList.remove("dragging");
+      renumber(list);
+      updateReorderStatus(list, statusEl, finalize);
+    });
+    list.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const dragging = list.querySelector(".dragging");
+      if (!dragging) return;
+      const after = dragAfter(list, e.clientY);
+      if (after == null) list.appendChild(dragging);
+      else list.insertBefore(dragging, after);
+      renumber(list);
+      updateReorderStatus(list, statusEl, finalize);
+      autoscroll(list, e.clientY);
+    });
+  }
+
+  function openReorderModal(focusSlot) {
+    const slots = Object.keys(reorderSnapshot.bytes).map(Number).sort((a, z) => a - z);
+    const modal = document.createElement("div");
+    modal.className = "modal-overlay reorder-overlay";
+    modal.innerHTML = `
+      <div class="modal-card reorder-card">
+        <div class="reorder-head">
+          <h2>Reorder presets</h2>
+          <p class="subtitle">Drag presets to new slots. Slot numbers stay put — presets move into them. Finalize writes only the slots that changed.</p>
+        </div>
+        <div class="reorder-body"><ul class="reorder-list"></ul></div>
+        <div class="reorder-status subtitle"></div>
+        <div class="reorder-foot"></div>
+      </div>`;
+    const list = modal.querySelector(".reorder-list");
+    const statusEl = modal.querySelector(".reorder-status");
+    const foot = modal.querySelector(".reorder-foot");
+
+    slots.forEach((slot) => list.appendChild(buildReorderRow(slot)));
+    renumber(list);
+
+    const backup = mkBtn("⬇ Download bank backup", "reorder-backup");
+    backup.title = "Save a snapshot of all presets to a file before writing";
+    backup.onclick = downloadBankBackup;
+    const cancel = mkBtn("Cancel", "modal-btn");
+    cancel.onclick = () => closeReorder(modal);
+    const finalize = mkBtn("Finalize", "modal-btn primary");
+    finalize.disabled = true;
+    finalize.onclick = () => finalizeReorder(list, modal);
+    const btns = document.createElement("div");
+    btns.className = "reorder-foot-btns";
+    btns.append(backup, cancel, finalize);
+    foot.appendChild(btns);
+
+    wireReorderDrag(list, statusEl, finalize);
+    document.body.appendChild(modal);
+    updateReorderStatus(list, statusEl, finalize);
+
+    if (focusSlot != null) {
+      const row = [...list.children].find((r) => r.__item.origSlot === focusSlot);
+      if (row) { row.scrollIntoView({ block: "center" }); row.classList.add("focus-flash"); setTimeout(() => row.classList.remove("focus-flash"), 1200); }
+    }
+  }
+
+  function downloadBankBackup() {
+    if (!reorderSnapshot) return;
+    const presets = Object.keys(reorderSnapshot.bytes).map(Number).sort((a, z) => a - z)
+      .map((slot) => ({ slot, name: reorderSnapshot.names[slot], b64: bytesToB64(reorderSnapshot.bytes[slot]) }));
+    const doc = { device: (inventoryDevice && inventoryDevice.key) || "gp50", takenAt: reorderSnapshot.takenAt, presets };
+    const blob = new Blob([JSON.stringify(doc)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${(inventoryDevice && inventoryDevice.key) || "gp50"}_bank_backup.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    UI.toast("Saved a bank backup (all 100 presets).", "ok");
+  }
+
+  async function finalizeReorder(list, modal) {
+    const order = currentOrder(list);
+    if (new Set(order).size !== order.length) { UI.toast("Internal error: the new order lost a preset — aborting.", "err"); return; }
+    const writes = planReorder(reorderSnapshot.bytes, order);
+    if (!writes.length) { UI.toast("No changes to write.", "ok"); return; }
+    const est = fmtDur(writes.length * REORDER_WRITE_MS);
+    const ok = await UI.confirmDialog(
+      `Write ${writes.length} preset${writes.length > 1 ? "s" : ""} to the pedal to apply the new order? This takes about ${est}. Keep this tab in the foreground and don't unplug the pedal until it finishes. Make sure Valeton Suite is closed.`,
+      `Write ${writes.length} presets`);
+    if (!ok) return;
+    await runReorderWrites(writes, list, modal);
+  }
+
+  async function commitReorderCache(writes) {
+    if (window.__staticApi && window.__staticApi.setSlotBytes) {
+      for (const w of writes) window.__staticApi.setSlotBytes(w.slot, w.bytes);
+      await loadInventory().catch(() => {});
+    } else {
+      for (const w of writes) await refreshSlotFromDevice(w.slot).catch(() => {});
+    }
+    updateDeviceHeader();
+    render();
+  }
+
+  // Swap the modal footer for a progress bar and drive the writes. On any failure
+  // we stop and surface retry / rollback rather than pressing on blindly.
+  function reorderProgressUI(foot) {
+    foot.innerHTML = "";
+    const wrap = document.createElement("div");
+    wrap.className = "reorder-progress";
+    wrap.innerHTML = `<div class="scan-bar"><div class="reorder-fill" style="width:0%"></div></div><span class="reorder-prog-text subtitle"></span>`;
+    foot.appendChild(wrap);
+    return { fill: wrap.querySelector(".reorder-fill"), txt: wrap.querySelector(".reorder-prog-text") };
+  }
+
+  async function runReorderWrites(writes, list, modal) {
+    const foot = modal.querySelector(".reorder-foot");
+    const { fill, txt } = reorderProgressUI(foot);
+    const done = [];
+    for (let i = 0; i < writes.length; i++) {
+      const w = writes[i];
+      txt.textContent = `Writing ${i + 1}/${writes.length} — slot ${w.slot} (was #${w.from})…`;
+      try {
+        await withTimeout(DeviceBridge.writeSlot(w.slot, w.bytes), 15000, "write timed out — is this tab in the background? (bring it to the front)");
+        done.push(w);
+        fill.style.width = `${Math.round(((i + 1) / writes.length) * 100)}%`;
+      } catch (e) {
+        await reorderFailure(writes, done, { w, i, error: e.message }, foot, list, modal);
+        return;
+      }
+    }
+    txt.textContent = "Updating…";
+    await commitReorderCache(writes);
+    UI.toast(`Reordered — wrote ${writes.length} preset${writes.length > 1 ? "s" : ""} to the pedal.`, "ok");
+    closeReorder(modal);
+  }
+
+  async function reorderFailure(writes, done, failed, foot, list, modal) {
+    await commitReorderCache(done); // reflect what actually got written
+    foot.innerHTML = "";
+    const msg = document.createElement("p");
+    msg.className = "reorder-fail-msg";
+    msg.textContent = `Write failed at slot ${failed.w.slot} (${failed.error}). ${done.length} of ${writes.length} presets were written — your bank is partly reordered.`;
+    const leave = mkBtn("Leave as-is", "modal-btn");
+    leave.onclick = () => closeReorder(modal);
+    const rollback = mkBtn("↺ Roll back written slots", "modal-btn");
+    rollback.onclick = () => rollbackReorder(done, foot, modal);
+    const retry = mkBtn(`Retry remaining (${writes.length - failed.i})`, "modal-btn primary");
+    retry.onclick = () => runReorderWrites(writes.slice(failed.i), list, modal);
+    const row = document.createElement("div");
+    row.className = "reorder-foot-btns";
+    row.append(leave, rollback, retry);
+    foot.append(msg, row);
+  }
+
+  // Rewrite the ORIGINAL bytes back to every slot we changed, undoing the partial
+  // reorder. Originals come from the immutable snapshot.
+  async function rollbackReorder(done, foot, modal) {
+    const { fill, txt } = reorderProgressUI(foot);
+    const rolled = [];
+    for (let i = 0; i < done.length; i++) {
+      const dest = done[i].slot;
+      txt.textContent = `Rolling back ${i + 1}/${done.length} — slot ${dest}…`;
+      try {
+        await withTimeout(DeviceBridge.writeSlot(dest, reorderSnapshot.bytes[dest]), 15000, "rollback timed out (foreground the tab)");
+        rolled.push({ slot: dest, bytes: reorderSnapshot.bytes[dest] });
+        fill.style.width = `${Math.round(((i + 1) / done.length) * 100)}%`;
+      } catch (e) { UI.toast(`Rollback stopped at slot ${dest}: ${e.message}`, "err"); break; }
+    }
+    await commitReorderCache(rolled);
+    UI.toast(`Rolled back ${rolled.length} slot${rolled.length === 1 ? "" : "s"} to the original presets.`, rolled.length === done.length ? "ok" : "err");
+    closeReorder(modal);
+  }
+
+  function installReorderButton() {
+    if (!(window.DeviceBridge && DeviceBridge.webmidiAvailable())) return;
+    const bar = $("device-bar");
+    if (!bar || bar.querySelector(".reorder-btn")) return;
+    const btn = mkBtn("⇅ Reorder", "reorder-btn");
+    btn.title = "Rearrange presets across slots and write the changes in one batch";
+    btn.addEventListener("click", () => openReorder(null));
+    const scanBtn = $("scan-btn");
+    if (scanBtn) bar.insertBefore(btn, scanBtn); else bar.appendChild(btn);
+  }
+
   function renderPresets() {
     const shown = patches.filter((p) => matchesFilters(p) && matchesSearch(p));
     listEl.innerHTML = "";
@@ -1087,6 +1458,14 @@
         `<span class="preset-num">#${p.slot}</span> <span class="preset-name">${curName(p).replace(/</g, "&lt;")}</span>` +
         (isActive ? ' <span class="badge active-badge">● Active on pedal</span>' : "") +
         (p.uses_snaptone ? ' <span class="badge st">SnapTone</span>' : "");
+      // reorder grip (left of the slot number) → opens the batched reorder flow
+      if (window.DeviceBridge && DeviceBridge.webmidiAvailable()) {
+        const grip = document.createElement("button");
+        grip.type = "button"; grip.className = "reorder-grip"; grip.textContent = "☰";
+        grip.title = "Reorder presets — drag them to new slots, then write in one batch";
+        grip.addEventListener("click", (ev) => { ev.stopPropagation(); openReorder(p.slot); });
+        head.insertBefore(grip, head.firstChild);
+      }
       // full block chain, right-aligned, bypassed blocks dimmed (matches the Designer)
       const chips = document.createElement("div");
       chips.className = "chip-row";
@@ -1329,6 +1708,7 @@
         if (!st.error) {
           status.textContent = `Scanned ${st.written || st.done} presets${st.errors ? `, ${st.errors} skipped` : ""}. Loading…`;
           localStorage.setItem(LAST_SCAN_KEY, String(Date.now()));
+          bankScanned = true;
           await loadInventory();
           await loadModelsAndLib();
           buildFilterBar();
@@ -1377,11 +1757,15 @@
     renderSaved();
     updateDeviceHeader();
     render();
+    installReorderButton(); // WebMIDI-only "⇅ Reorder" in the device bar
     refreshDeviceStatus(); // non-blocking: light up click-to-select if a pedal is present
   }
 
   const connBtn = $("device-conn");
   if (connBtn) connBtn.addEventListener("click", refreshDeviceStatus);
+
+  // test/debug surface for the reorder planner (pure) — mirrors nothing else
+  window.__reorderTest = { planReorder, eqBytes };
 
   init();
 })();

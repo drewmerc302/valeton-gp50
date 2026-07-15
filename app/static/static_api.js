@@ -322,6 +322,15 @@
     store.bytes.set(slot, u); store.names.set(slot, PRST.readName(u)); invalidate();
   }
 
-  root.__staticApi = { handle, ensureLoaded, setSlotBytes }; // for tests + Explorer cache sync
+  // Every slot's current .prst bytes (fresh copies), keyed by slot. The Explorer's
+  // preset-reorder flow needs the raw snapshot to compute + write the minimal diff.
+  function getAllSlotBytes() {
+    if (!store) return null;
+    const out = {};
+    for (const [slot, u] of store.bytes) out[slot] = Uint8Array.from(u);
+    return out;
+  }
+
+  root.__staticApi = { handle, ensureLoaded, setSlotBytes, getAllSlotBytes }; // for tests + Explorer cache sync
   console.log("[static_api] active — /api/device/* served client-side");
 })(typeof self !== "undefined" ? self : this);

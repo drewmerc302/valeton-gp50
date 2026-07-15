@@ -486,15 +486,29 @@
     rst.type = "button"; rst.className = "linkish"; rst.textContent = "reset";
     rst.addEventListener("click", () => { edits.delete(p.slot); renderPresets(); });
     bar.appendChild(dl); bar.appendChild(wr);
-    // live-edit toggle (WebMIDI only): mirror changes to the pedal in real time
+    // live edit (WebMIDI only): mirror changes to the pedal in real time
     if (window.DeviceBridge && DeviceBridge.webmidiAvailable()) {
-      const live = document.createElement("button");
-      live.type = "button";
-      live.className = "live-toggle" + (liveSlot === p.slot ? " on" : "");
-      live.textContent = liveSlot === p.slot ? "● Live edit on" : "⚡ Live edit";
-      live.title = "Mirror edits to the pedal in real time over WebMIDI (writes slot " + p.slot + " on each change)";
-      live.addEventListener("click", () => toggleLiveEdit(p));
-      bar.appendChild(live);
+      if (liveSlot === p.slot) {
+        // live is ON for this slot → commit / restore controls
+        const status = document.createElement("span");
+        status.className = "live-status"; status.textContent = "● Live";
+        const keep = document.createElement("button");
+        keep.type = "button"; keep.className = "live-keep"; keep.textContent = "✓ Keep changes";
+        keep.title = "Commit the current live edits to the pedal and stop live editing";
+        keep.addEventListener("click", () => keepLive(p.slot));
+        const restore = document.createElement("button");
+        restore.type = "button"; restore.className = "live-restore"; restore.textContent = "↺ Restore original";
+        restore.title = "Undo all live changes — write the pre-live settings back to the pedal";
+        restore.addEventListener("click", () => restoreLive(p.slot));
+        bar.appendChild(status); bar.appendChild(keep); bar.appendChild(restore);
+      } else {
+        const live = document.createElement("button");
+        live.type = "button"; live.className = "live-toggle";
+        live.textContent = "⚡ Live edit";
+        live.title = "Mirror edits to the pedal in real time over WebMIDI (writes slot " + p.slot + " on each change)";
+        live.addEventListener("click", () => toggleLiveEdit(p));
+        bar.appendChild(live);
+      }
     }
     bar.appendChild(rst);
     const note = document.createElement("span");
@@ -858,6 +872,12 @@
     }
   }
 
+  // The edit spec (params/bypass/settings/footswitches/models) for applyEdits.
+  function editsSpec(slot) {
+    const e = getEdit(slot);
+    return { params: e.params, bypass: e.bypass, settings: e.settings, footswitches: e.footswitches || {}, models: e.models || {} };
+  }
+
   function liveKick(slot) {
     if (liveSlot !== slot || !liveBase) return;
     livePending = true;
@@ -880,11 +900,7 @@
     liveBusy = true;
     livePending = false;
     try {
-      const e = getEdit(slot);
-      const edited = window.PRST.applyEdits(liveBase, {
-        params: e.params, bypass: e.bypass, settings: e.settings,
-        footswitches: e.footswitches || {}, models: e.models || {},
-      });
+      const edited = window.PRST.applyEdits(liveBase, editsSpec(slot));
       liveNote(slot, "Writing to the pedal…");
       const r = await withTimeout(
         DeviceBridge.writeSlot(slot, edited), 15000,
@@ -897,6 +913,79 @@
       liveBusy = false;
       if (livePending) liveKick(slot); // edits arrived mid-write -> flush the latest
     }
+  }
+
+  // Re-pull a slot's live state from the pedal into the cache (so the row shows
+  // what's actually on the device after a commit).
+  async function refreshSlotFromDevice(slot) {
+    const r = await UI.jpost("/api/device/select", { slot });
+    if (r && r.ok && r.cache_updated) await loadInventory();
+  }
+
+  // Restore original: write the pre-live snapshot back to the pedal, undoing every
+  // live change, then exit live mode. This is the safety net for live editing.
+  async function restoreLive(slot) {
+    if (liveBase == null || liveSlot !== slot) return;
+    if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
+    livePending = false;
+    const base = liveBase;
+    liveNote(slot, "Restoring original settings to the pedal…");
+    try {
+      await withTimeout(DeviceBridge.writeSlot(slot, base), 15000, "restore timed out (foreground the tab)");
+    } catch (e) {
+      liveNote(slot, `Restore failed: ${e.message}`, "err");
+      return;
+    }
+    edits.delete(slot);
+    liveSlot = null; liveBase = null;
+    await refreshSlotFromDevice(slot).catch(() => {});
+    renderPresets();
+    UI.toast(`Restored slot ${slot} to its original settings.`, "ok");
+  }
+
+  // Keep changes: the live edits are already on the pedal (each change wrote); flush
+  // the latest, refresh the cache, and exit live mode with the edits committed.
+  async function keepLive(slot) {
+    if (liveSlot !== slot) return;
+    if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
+    livePending = false;
+    liveNote(slot, "Committing changes to the pedal…");
+    try {
+      const edited = window.PRST.applyEdits(liveBase, editsSpec(slot)); // ensure the very latest is written
+      await withTimeout(DeviceBridge.writeSlot(slot, edited), 15000, "keep timed out (foreground the tab)");
+    } catch (e) {
+      liveNote(slot, `Keep failed: ${e.message}`, "err");
+      return;
+    }
+    await refreshSlotFromDevice(slot).catch(() => {});
+    edits.delete(slot);
+    liveSlot = null; liveBase = null;
+    renderPresets();
+    UI.toast(`Kept your changes on slot ${slot}.`, "ok");
+  }
+
+  // 3-way modal for leaving a live-edited preset: keep / restore / cancel.
+  function liveExitDialog(name, slot) {
+    return new Promise((resolve) => {
+      const ov = document.createElement("div");
+      ov.className = "modal-overlay";
+      ov.innerHTML = `
+        <div class="modal-card">
+          <h2>Live edits on "${name}"</h2>
+          <p>You changed slot ${slot} live on the pedal. Keep those changes, or restore the original settings?</p>
+          <div class="modal-actions">
+            <button type="button" class="modal-btn" data-c="cancel">Cancel</button>
+            <button type="button" class="modal-btn" data-c="restore">↺ Restore original</button>
+            <button type="button" class="modal-btn primary" data-c="keep">✓ Keep changes</button>
+          </div>
+        </div>`;
+      document.body.appendChild(ov);
+      ov.addEventListener("click", (e) => {
+        const c = e.target && e.target.getAttribute && e.target.getAttribute("data-c");
+        if (c) { ov.remove(); resolve(c); }
+        else if (e.target === ov) { ov.remove(); resolve("cancel"); }
+      });
+    });
   }
 
   function renderPresets() {
@@ -1027,6 +1116,18 @@
   }
 
   async function selectPreset(p) {
+    // leaving a live-edited preset for another one? decide what to do with the edits
+    if (liveSlot != null && liveSlot !== p.slot) {
+      if (isDirty(liveSlot)) {
+        const choice = await liveExitDialog(slotName(liveSlot), liveSlot);
+        if (choice === "cancel") return;
+        if (choice === "restore") await restoreLive(liveSlot);
+        else await keepLive(liveSlot);
+        if (liveSlot != null) return; // exit didn't complete (e.g. write failed) — stay put
+      } else {
+        liveSlot = null; liveBase = null; // live on but nothing changed — just drop it
+      }
+    }
     if (!deviceLive.connected) {
       // browse mode (no pedal): multi-open toggle, unchanged
       if (expanded.has(p.slot)) expanded.delete(p.slot);

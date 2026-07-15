@@ -479,7 +479,7 @@
     dl.type = "button"; dl.className = "save-edit"; dl.textContent = "⬇ Download edited .prst";
     dl.addEventListener("click", () => downloadEdit(p));
     const wr = document.createElement("button");
-    wr.type = "button"; wr.className = "write-dev"; wr.textContent = "⚡ Write to device";
+    wr.type = "button"; wr.className = "write-dev"; wr.textContent = "⚡ Write edits to device";
     wr.title = "Write this patch directly to the pedal (overwrites a slot)";
     wr.addEventListener("click", () => writeToDevice(p));
     const rst = document.createElement("button");

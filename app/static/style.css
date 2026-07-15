@@ -100,15 +100,25 @@ header {
 .brand-name { font-weight: 800; font-size: 0.95rem; line-height: 1.15; }
 .brand-sub { font-size: 0.66rem; color: var(--muted); font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
 
-.nav-pills { display: flex; gap: 2px; background: var(--chip); border-radius: 999px; padding: 3px; }
+/* nav spans the full width between the brand and the theme toggle */
+.nav-pills {
+  display: flex; gap: 4px; flex: 1;
+  background: var(--chip); border-radius: 999px; padding: 4px;
+}
 .nav-pills a {
-  color: var(--muted); text-decoration: none; font-weight: 700; font-size: 0.82rem;
-  padding: 0.45rem 1rem; border-radius: 999px; transition: color 0.15s;
+  flex: 1; text-align: center;
+  color: var(--muted); text-decoration: none; font-weight: 700; font-size: 0.9rem;
+  padding: 0.55rem 1rem; border-radius: 999px; transition: color 0.15s, background 0.15s;
 }
 .nav-pills a:hover { color: var(--text); }
-.nav-pills a.active { color: var(--accent); background: var(--card-bg); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14); }
+/* selected = white on a subtly raised pill (was red-on-black) */
+.nav-pills a.active {
+  color: var(--text); font-weight: 800;
+  background: color-mix(in srgb, var(--text) 13%, var(--card-bg));
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
 
-.nav-spacer { flex: 1; }
+.nav-spacer { display: none; }
 .theme-toggle {
   background: transparent; border: 1px solid var(--border); border-radius: 8px;
   padding: 0.4rem 0.75rem; font: inherit; font-size: 0.78rem; font-weight: 600;

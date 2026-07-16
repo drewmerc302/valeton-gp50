@@ -18,6 +18,9 @@
   const PRST = root.PRST || (typeof module !== "undefined" && module.exports ? require("./prst.js") : null);
 
   const BLOCK_NAMES = ["NR", "PRE", "DST", "AMP", "CAB", "EQ", "MOD", "DLY", "RVB", "N->S"];
+  // Blocks that can be reordered in the signal chain; the rest (DST·N->S·AMP·CAB·EQ)
+  // are a fixed atomic core. See re/DEVICE_BLOCKORDER.md.
+  const MOVABLE_BLOCKS = new Set(["NR", "PRE", "MOD", "DLY", "RVB"]);
   const NS_CAT = 0x0f, CAB_CAT = 0x0a, AMP_CATS = [0x07, 0x08];
   const USER_IR_BASE = 0x100000;
 
@@ -107,7 +110,7 @@
         }
         out.push({
           block, active: !!((mask >> k) & 1), type: btype ?? null, model: model ?? null,
-          official: official ?? null, index: idx, fxid,
+          official: official ?? null, index: idx, fxid, movable: MOVABLE_BLOCKS.has(block),
           label: blockLabel(block, btype, model),
           label_official: blockLabel(block, btype, official || model),
           params: paramsFor(e, floats, k),
@@ -151,6 +154,7 @@
       for (const p of patches) {
         p.snaptone_name = p.snaptone_slot ? (slotLabel[p.snaptone_slot] || "") : "";
         p.blocks = blocksFor(raw[p.slot], slotLabel);
+        p.order = PRST.readOrder(raw[p.slot]); // chain[pos] = block(record) index
       }
 
       // IR/Cab inventory: full catalog + usage counts

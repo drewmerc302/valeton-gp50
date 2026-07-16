@@ -46,6 +46,7 @@ def record(path: str) -> dict:
         "name": fmt.read_name(prst),
         "models": [list(m) for m in fmt.model_records(prst)],
         "bypass": fmt.bypass_mask(prst),
+        "order": fmt.read_order(prst),
         "params": fmt.param_floats(prst),
         "fsOff": fmt.fs_offset(prst),
         "volBpm": list(conv._read_vol_bpm(prst)),

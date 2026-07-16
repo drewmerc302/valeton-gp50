@@ -201,14 +201,15 @@
   }
 
   function editsFrom(body) {
-    return { params: body.params || {}, bypass: body.bypass || {}, settings: body.settings || {}, footswitches: body.footswitches || {}, models: body.models || {}, name: body.name };
+    return { params: body.params || {}, bypass: body.bypass || {}, settings: body.settings || {}, footswitches: body.footswitches || {}, models: body.models || {}, name: body.name, order: body.order };
   }
 
   async function handleWrite(body) {
     if (!(await ensureConnected())) return J({ ok: false, error: "no device connected" });
     const base = store.bytes.get(body.patch_slot);
     if (!base) return J({ ok: false, error: `unknown slot ${body.patch_slot}` });
-    const hasEdits = ["params", "bypass", "settings", "footswitches", "models"].some((k) => body[k] && Object.keys(body[k]).length);
+    const hasEdits = ["params", "bypass", "settings", "footswitches", "models"].some((k) => body[k] && Object.keys(body[k]).length)
+      || body.name != null || body.order != null;
     const prst = hasEdits ? PRST.applyEdits(base, editsFrom(body)) : base;
     const target = body.target_slot;
     try {

@@ -65,6 +65,10 @@ for (const rec of corpus) {
   const bypass = bo >= 0 ? dvv.getUint32(bo, true) : 0;
   check(rec.path, "bypassMask", bypass === rec.bypass, `${bypass} != ${rec.bypass}`);
 
+  // chain order (10-byte permutation)
+  check(rec.path, "readOrder", JSON.stringify(PRST.readOrder(prst)) === JSON.stringify(rec.order),
+    `${JSON.stringify(PRST.readOrder(prst))} != ${JSON.stringify(rec.order)}`);
+
   // params (float32 x 80)
   const po = PRST.paramsOffset(prst);
   const params = [];

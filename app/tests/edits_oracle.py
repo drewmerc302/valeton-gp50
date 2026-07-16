@@ -29,6 +29,13 @@ EDIT_SETS = [
     {"label": "models", "edits": {"models": {"0": 0x0A00003C, "4": 0x01000001}}},
     {"label": "name", "edits": {"name": "My Lead Tone"}},
     {"label": "name-long", "edits": {"name": "ThisNameIsWayTooLongForTheField"}},
+    # chain reorder: a full permutation of the 10 model records (skipped for
+    # presets with no REC_ORDER record; see records()).
+    {"label": "order-rvb-first", "edits": {"order": [8, 0, 1, 2, 9, 3, 4, 5, 6, 7]}},
+    {
+        "label": "order+name",
+        "edits": {"order": [0, 7, 1, 2, 9, 3, 4, 5, 6, 8], "name": "Reordered"},
+    },
     {
         "label": "name+params",
         "edits": {"name": "Clean 2", "params": {"1": {"0": 33.0}}},
@@ -61,6 +68,9 @@ def records() -> list:
             base = fh.read()
         src = fmt.detect(base)
         for es in EDIT_SETS:
+            # order edits only apply to presets that carry a REC_ORDER record
+            if "order" in es["edits"] and fmt.order_offset(base) < 0:
+                continue
             b = bytearray(base)
             patchlib.apply_edits_bytes(b, copy.deepcopy(es["edits"]))
             out.append(

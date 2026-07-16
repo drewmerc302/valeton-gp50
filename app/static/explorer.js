@@ -37,6 +37,7 @@
   }
 
   function addFilter(f) {
+    if (reorderMode) return; // list is a reorder surface right now, not a filter surface
     if (!filters.some((x) => sameFilter(x, f))) filters.push(f);
     render();
   }
@@ -44,6 +45,7 @@
   // clicking a block chip toggles its filter: add if absent, remove if already
   // applied (so a second click on the same block clears it).
   function toggleFilter(f) {
+    if (reorderMode) return;
     const before = filters.length;
     filters = filters.filter((x) => !sameFilter(x, f));
     if (filters.length === before) filters.push(f);
@@ -223,18 +225,25 @@
 
   function getEdit(slot) {
     if (!edits.has(slot))
-      edits.set(slot, { params: {}, bypass: {}, settings: {}, footswitches: null, models: {}, override: {}, name: null });
+      edits.set(slot, { params: {}, bypass: {}, settings: {}, footswitches: null, models: {}, override: {}, name: null, order: null });
     return edits.get(slot);
   }
   function isDirty(slot) {
     const e = edits.get(slot);
     return e && (Object.keys(e.params).length || Object.keys(e.bypass).length ||
-      Object.keys(e.settings).length || Object.keys(e.models).length || e.footswitches || e.name != null);
+      Object.keys(e.settings).length || Object.keys(e.models).length || e.footswitches || e.name != null || e.order != null);
   }
   // Current name for a preset — a pending rename wins over the stored name.
   function curName(p) {
     const e = edits.get(p.slot);
     return e && e.name != null ? e.name : p.name;
+  }
+  // Current chain order (chain position -> model-record index). Pending reorder wins;
+  // falls back to the decoded order, then canonical identity.
+  function curOrder(p) {
+    const e = edits.get(p.slot);
+    if (e && e.order != null) return e.order;
+    return (p.order && p.order.length === 10) ? p.order : Array.from({ length: 10 }, (_, i) => i);
   }
 
   // Effective block view: if the user swapped the model, render the NEW model's
@@ -479,6 +488,7 @@
   function buildSaveBar(p) {
     const bar = document.createElement("div");
     bar.className = "save-bar";
+    if (isDirty(p.slot)) bar.classList.add("dirty"); // survive full re-renders (e.g. block reorder)
     bar.dataset.slot = p.slot;
     const dl = document.createElement("button");
     dl.type = "button"; dl.className = "save-edit"; dl.textContent = "⬇ Download edited .prst";
@@ -564,6 +574,114 @@
     }
   }
 
+  // --- block (signal-chain) reordering --------------------------------------
+  // A compact draggable strip of the 10 blocks in chain order. The 5 movable
+  // blocks (NR·PRE·MOD·DLY·RVB) drag freely; the 5-block amp core
+  // (DST·N→S·AMP·CAB·EQ) is one locked, atomic group they arrange around — so the
+  // core can never be split, matching the device/app rule. See re/DEVICE_BLOCKORDER.md.
+  function chainChip(p, b, recIdx, locked) {
+    const c = document.createElement("div");
+    c.className = "chain-chip blk-" + b.block.replace(/[^a-z]/gi, "").toLowerCase() + (locked ? " locked" : " movable");
+    c.dataset.rec = recIdx;
+    if (!locked) c.draggable = true;
+    const e = getEdit(p.slot);
+    const active = e.bypass[recIdx] !== undefined ? e.bypass[recIdx] : b.active;
+    if (!active) c.classList.add("bypassed-chip");
+    const name = blockDisplay(b.block);
+    c.innerHTML = (locked ? "" : `<span class="chain-grip" aria-hidden="true">⠿</span>`) + `<span class="chain-name">${name}</span>`;
+    c.title = locked ? "Fixed core block — can't be reordered" : `Drag to move ${name} in the chain`;
+    return c;
+  }
+
+  function buildChainStrip(p) {
+    const wrap = document.createElement("div");
+    wrap.className = "chain-strip-wrap";
+    const lbl = document.createElement("div");
+    lbl.className = "chain-strip-label";
+    lbl.innerHTML = `Signal chain <span class="hint">— drag NR · PRE · MOD · DLY · RVB around the fixed amp core</span>`;
+    wrap.appendChild(lbl);
+    const strip = document.createElement("div");
+    strip.className = "chain-strip";
+    const order = curOrder(p);
+    let coreDone = false;
+    order.forEach((recIdx) => {
+      const b = p.blocks[recIdx];
+      if (!b) return;
+      if (b.movable) {
+        strip.appendChild(chainChip(p, b, recIdx, false));
+      } else if (!coreDone) {
+        coreDone = true; // emit the whole contiguous core as one non-draggable unit
+        const core = document.createElement("div");
+        core.className = "chain-core";
+        core.title = "Fixed core — DST · N→S · AMP · CAB · EQ stay together, in order";
+        order.forEach((ri) => { const cb = p.blocks[ri]; if (cb && !cb.movable) core.appendChild(chainChip(p, cb, ri, true)); });
+        strip.appendChild(core);
+      }
+    });
+    wireChainDrag(p, strip);
+    wrap.appendChild(strip);
+    return wrap;
+  }
+
+  function chainDragAfter(strip, x) {
+    let best = { off: -Infinity, el: null };
+    for (const el of strip.children) {
+      if (el.classList.contains("dragging")) continue;
+      const box = el.getBoundingClientRect();
+      const off = x - box.left - box.width / 2;
+      if (off < 0 && off > best.off) best = { off, el };
+    }
+    return best.el;
+  }
+
+  // Read the chain order back from the strip DOM: movable chips contribute their
+  // record index; the core group expands to its blocks (kept contiguous + in order).
+  function chainOrderFromDom(strip) {
+    const order = [];
+    for (const el of strip.children) {
+      if (el.classList.contains("chain-core")) {
+        for (const cc of el.children) order.push(Number(cc.dataset.rec));
+      } else if (el.classList.contains("chain-chip")) {
+        order.push(Number(el.dataset.rec));
+      }
+    }
+    return order;
+  }
+
+  function setChainOrder(p, order) {
+    if (order.length !== 10 || new Set(order).size !== 10) return; // guard: keep it a permutation
+    const e = getEdit(p.slot);
+    const base = (p.order && p.order.length === 10) ? p.order : Array.from({ length: 10 }, (_, i) => i);
+    e.order = order.every((v, i) => v === base[i]) ? null : order;
+    refreshSaveBar(p);
+    renderPresets(); // re-render so the strip + block cards reflect the new chain order
+    liveKick(p.slot);
+  }
+
+  function wireChainDrag(p, strip) {
+    strip.addEventListener("dragstart", (ev) => {
+      const chip = ev.target.closest(".chain-chip.movable");
+      if (!chip || !strip.contains(chip)) { ev.preventDefault(); return; }
+      chip.classList.add("dragging");
+      ev.dataTransfer.effectAllowed = "move";
+      try { ev.dataTransfer.setData("text/plain", chip.dataset.rec); } catch { /* Safari */ }
+    });
+    strip.addEventListener("dragover", (ev) => {
+      const dragging = strip.querySelector(".dragging");
+      if (!dragging) return;
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = "move";
+      const after = chainDragAfter(strip, ev.clientX);
+      if (after == null) strip.appendChild(dragging);
+      else strip.insertBefore(dragging, after);
+    });
+    strip.addEventListener("dragend", () => {
+      const chip = strip.querySelector(".dragging");
+      if (chip) chip.classList.remove("dragging");
+      setChainOrder(p, chainOrderFromDom(strip));
+    });
+  }
+
   function renderDetail(p) {
     const d = document.createElement("div");
     d.className = "preset-detail";
@@ -620,8 +738,14 @@
       d.appendChild(ps);
     }
 
-    // per-block: bypass toggle + editable params
-    p.blocks.forEach((b0, blkIdx) => {
+    // draggable signal-chain strip (block reordering)
+    d.appendChild(buildChainStrip(p));
+
+    // per-block: bypass toggle + editable params, rendered in CHAIN order (blkIdx
+    // stays the model-record index, so all edits keep keying by record index).
+    curOrder(p).forEach((blkIdx) => {
+      const b0 = p.blocks[blkIdx];
+      if (!b0) return;
       const b = effBlock(p.slot, blkIdx, b0);
       if (!b.model && !b.params.length && !b0.model) return;
       const bd = document.createElement("div");
@@ -779,6 +903,7 @@
         body: JSON.stringify({
           patch_slot: p.slot, params: e.params, bypass: e.bypass,
           settings: e.settings, footswitches: e.footswitches || {}, models: e.models || {},
+          name: e.name, order: e.order,
         }),
       });
       if (!r.ok) throw new Error((await r.json()).detail || `HTTP ${r.status}`);
@@ -896,7 +1021,7 @@
       const j = await UI.jpost("/api/device/write", {
         patch_slot: p.slot, params: e.params, bypass: e.bypass,
         settings: e.settings, footswitches: e.footswitches || {}, models: e.models || {},
-        target_slot: target, confirm: true,
+        name: e.name, order: e.order, target_slot: target, confirm: true,
       });
       if (!j.ok) throw new Error(j.error || "write failed");
       const vn = j.verified_name ? ` — slot now reads "${j.verified_name}"` : "";
@@ -945,6 +1070,7 @@
     const e = getEdit(slot);
     const spec = { params: e.params, bypass: e.bypass, settings: e.settings, footswitches: e.footswitches || {}, models: e.models || {} };
     if (e.name != null) spec.name = e.name;
+    if (e.order != null) spec.order = e.order;
     return spec;
   }
 
@@ -1106,34 +1232,99 @@
     return writes;
   }
 
-  function reorderSummary(slot) {
-    const p = patches.find((x) => x.slot === slot);
-    if (!p) return "";
-    const chain = p.blocks.filter((b) => b.active && b.model).map((b) => (officialOn() && b.official ? b.official : b.model));
-    return chain.slice(0, 4).join(" · ") || "empty";
+  // --- inline reorder mode (main list) ---------------------------------------
+  // Presets are dragged by their ☰ grip directly in the main list. The first
+  // grip-drag (or a grip click / the ⇅ button) enters reorder mode: rows render
+  // collapsed, selection/filters/live-edit are locked out, and a sticky bar shows
+  // pending moves + Finalize. The device snapshot is taken at Finalize time (the
+  // snapshot dialog stays), so arranging costs nothing until the user commits.
+  let reorderMode = null; // { order: [origin slot per destination index] } while active
+
+  function reorderBlockReason() {
+    if (!(window.DeviceBridge && DeviceBridge.webmidiAvailable())) return "Reorder needs Chrome or Edge (WebMIDI).";
+    if (!window.__staticApi || !window.__staticApi.getAllSlotBytes) return "Reorder needs the static WebMIDI app.";
+    if (filters.length || searchEl.value.trim()) return "Clear the search and filters first — reordering needs all 100 slots visible.";
+    const slots = patches.map((p) => p.slot).sort((a, z) => a - z);
+    if (slots.length !== 100 || slots[0] !== 0 || slots[99] !== 99) return "Reorder needs the full 100-preset inventory — rescan the device.";
+    if (liveSlot != null) return "Finish the live edit first (keep or restore it), then reorder.";
+    return null;
   }
 
-  // Entry: gate → snapshot dialog → (scan) → open the reorder modal.
-  async function openReorder(focusSlot) {
-    if (!(window.DeviceBridge && DeviceBridge.webmidiAvailable())) { UI.toast("Reorder needs Chrome or Edge (WebMIDI).", "err"); return; }
-    if (!window.__staticApi || !window.__staticApi.getAllSlotBytes) { UI.toast("Reorder needs the static WebMIDI app.", "err"); return; }
+  function enterReorderMode(rerender) {
+    if (reorderMode) return;
+    reorderMode = { order: patches.map((p) => p.slot).sort((a, z) => a - z) };
+    expanded.clear();
+    searchEl.disabled = true;
+    ensureReorderBar();
+    updateReorderBar();
+    if (rerender) renderPresets();
+  }
+
+  // Teardown only — callers re-render (or commitReorderCache already did).
+  function finishReorder() {
+    reorderMode = null;
+    reorderSnapshot = null;
+    searchEl.disabled = false;
+    const bar = $("reorder-inline-bar");
+    if (bar) bar.remove();
+    listEl.classList.remove("reordering");
+  }
+
+  function ensureReorderBar() {
+    if ($("reorder-inline-bar")) return;
+    const bar = document.createElement("div");
+    bar.id = "reorder-inline-bar";
+    bar.className = "reorder-inline-bar";
+    const status = document.createElement("span");
+    status.className = "reorder-inline-status subtitle";
+    const spacer = document.createElement("div");
+    spacer.className = "nav-spacer";
+    const backup = mkBtn("⬇ Bank backup", "reorder-backup");
+    backup.title = "Save a snapshot of all presets to a file before writing";
+    backup.onclick = async () => { if (reorderSnapshot || (await acquireSnapshot())) downloadBankBackup(); };
+    const cancel = mkBtn("Cancel", "modal-btn");
+    cancel.onclick = () => { finishReorder(); render(); };
+    const finalize = mkBtn("Finalize", "modal-btn primary reorder-finalize");
+    finalize.disabled = true;
+    finalize.onclick = finalizeInlineReorder;
+    bar.append(status, spacer, backup, cancel, finalize);
+    const listSection = listEl.closest("section.card");
+    listSection.parentNode.insertBefore(bar, listSection);
+  }
+
+  function updateReorderBar() {
+    const bar = $("reorder-inline-bar");
+    if (!bar || !reorderMode) return;
+    const moved = reorderMode.order.filter((slot, dest) => slot !== dest).length;
+    bar.querySelector(".reorder-inline-status").textContent = moved
+      ? `${moved} slot${moved > 1 ? "s" : ""} will change — up to ≈ ${fmtDur(moved * REORDER_WRITE_MS)} to write`
+      : "Drag presets by the ☰ grip. Slot numbers stay put — presets move into them.";
+    const finalize = bar.querySelector(".reorder-finalize");
+    finalize.disabled = !moved;
+    finalize.textContent = moved ? `Finalize — write ${moved}` : "Finalize";
+  }
+
+  // Gate → snapshot dialog → (scan) → reorderSnapshot ready. Shared by Finalize
+  // and the pre-write bank backup.
+  async function acquireSnapshot() {
+    if (!(window.DeviceBridge && DeviceBridge.webmidiAvailable())) { UI.toast("Reorder needs Chrome or Edge (WebMIDI).", "err"); return false; }
+    if (!window.__staticApi || !window.__staticApi.getAllSlotBytes) { UI.toast("Reorder needs the static WebMIDI app.", "err"); return false; }
     try { if (!DeviceBridge.connected()) await DeviceBridge.connect(); }
-    catch (e) { UI.toast(`Connect the pedal first: ${e.message}`, "err"); return; }
+    catch (e) { UI.toast(`Connect the pedal first: ${e.message}`, "err"); return false; }
 
     const choice = await reorderSnapshotDialog();
-    if (choice === "cancel") return;
-    if (choice === "fresh") { if (!(await runReorderScan())) return; }
+    if (choice === "cancel") return false;
+    if (choice === "fresh") { if (!(await runReorderScan())) return false; }
 
     const all = window.__staticApi.getAllSlotBytes();
     const slots = all ? Object.keys(all).map(Number).sort((a, z) => a - z) : [];
     if (slots.length !== 100 || slots[0] !== 0 || slots[99] !== 99) {
       UI.toast("Snapshot is incomplete — take a fresh snapshot and try again.", "err");
-      return;
+      return false;
     }
     reorderSnapshot = { bytes: all, names: {}, takenAt: Date.now() };
     for (const slot of slots) reorderSnapshot.names[slot] = window.PRST.readName(all[slot]);
-    await loadInventory().catch(() => {}); // so the row chain summaries match the snapshot
-    openReorderModal(focusSlot);
+    return true;
   }
 
   // Explain the up-front snapshot (the user's decision: force a fresh scan, but ask
@@ -1200,42 +1391,8 @@
     }
   }
 
-  function closeReorder(modal) { modal.remove(); reorderSnapshot = null; }
-
-  function buildReorderRow(slot) {
-    const li = document.createElement("li");
-    li.className = "reorder-row";
-    li.draggable = true;
-    li.__item = { origSlot: slot };
-    li.innerHTML =
-      `<span class="reorder-grip2" aria-hidden="true">☰</span>` +
-      `<span class="reorder-slot"></span>` +
-      `<span class="reorder-info"><span class="reorder-line1">` +
-      `<span class="reorder-name"></span> <span class="reorder-orig"></span></span>` +
-      `<span class="reorder-summary"></span></span>`;
-    li.querySelector(".reorder-name").textContent = reorderSnapshot.names[slot] || `slot ${slot}`;
-    li.querySelector(".reorder-orig").textContent = `was #${slot}`;
-    li.querySelector(".reorder-summary").textContent = reorderSummary(slot);
-    return li;
-  }
-
-  const currentOrder = (list) => [...list.children].map((r) => r.__item.origSlot);
-  function renumber(list) { [...list.children].forEach((r, i) => { const b = r.querySelector(".reorder-slot"); if (b) b.textContent = "#" + i; }); }
-
-  function updateReorderStatus(list, statusEl, finalize) {
-    const writes = planReorder(reorderSnapshot.bytes, currentOrder(list));
-    const changed = new Set(writes.map((w) => w.slot));
-    [...list.children].forEach((r, idx) => r.classList.toggle("moved", changed.has(idx)));
-    const n = writes.length;
-    statusEl.textContent = n
-      ? `${n} preset${n > 1 ? "s" : ""} will be written · ≈ ${fmtDur(n * REORDER_WRITE_MS)}`
-      : "No changes yet — drag a preset to a new slot.";
-    finalize.disabled = n === 0;
-    finalize.textContent = n ? `Finalize — write ${n}` : "Finalize";
-  }
-
   function dragAfter(list, y) {
-    const rows = [...list.querySelectorAll(".reorder-row:not(.dragging)")];
+    const rows = [...list.querySelectorAll(".preset-row:not(.dragging)")];
     let best = { offset: -Infinity, el: null };
     for (const row of rows) {
       const box = row.getBoundingClientRect();
@@ -1244,82 +1401,53 @@
     }
     return best.el;
   }
-  function autoscroll(list, y) {
-    const box = list.getBoundingClientRect(), M = 44;
-    if (y - box.top < M) list.scrollTop -= 10;
-    else if (box.bottom - y < M) list.scrollTop += 10;
+  // the main list scrolls with the page, not inside a box — nudge the window
+  function autoscroll(y) {
+    const M = 70;
+    if (y < M) window.scrollBy(0, -14);
+    else if (window.innerHeight - y < M) window.scrollBy(0, 14);
   }
 
-  function wireReorderDrag(list, statusEl, finalize) {
-    list.addEventListener("dragstart", (e) => {
-      const row = e.target.closest(".reorder-row");
-      if (!row) return;
+  function wireInlineReorder() {
+    // a drag may only start from a grip: arm the row on grip pointerdown,
+    // disarm on dragend — row clicks and text selection stay unaffected
+    listEl.addEventListener("pointerdown", (e) => {
+      const grip = e.target.closest(".reorder-grip");
+      if (!grip || grip.classList.contains("disabled")) return;
+      const row = grip.closest(".preset-row");
+      if (row) row.draggable = true;
+    });
+    listEl.addEventListener("dragstart", (e) => {
+      const row = e.target.closest(".preset-row");
+      if (!row || !row.draggable) return;
+      if (!reorderMode) {
+        const reason = reorderBlockReason();
+        if (reason) { e.preventDefault(); row.draggable = false; UI.toast(reason, "err"); return; }
+        enterReorderMode(false); // no re-render mid-gesture — it would kill the drag
+      }
       row.classList.add("dragging");
       e.dataTransfer.effectAllowed = "move";
-      try { e.dataTransfer.setData("text/plain", String(row.__item.origSlot)); } catch { /* Safari */ }
+      try { e.dataTransfer.setData("text/plain", String(row.__slot)); } catch { /* Safari */ }
     });
-    list.addEventListener("dragend", (e) => {
-      const row = e.target.closest(".reorder-row");
-      if (row) row.classList.remove("dragging");
-      renumber(list);
-      updateReorderStatus(list, statusEl, finalize);
+    listEl.addEventListener("dragend", (e) => {
+      const row = e.target.closest(".preset-row");
+      if (row) { row.classList.remove("dragging"); row.draggable = false; }
+      if (!reorderMode) return;
+      reorderMode.order = [...listEl.querySelectorAll(".preset-row")].map((r) => r.__slot);
+      renderPresets(); // renumber + moved-highlight + collapse any stale detail
+      updateReorderBar();
     });
-    list.addEventListener("dragover", (e) => {
+    listEl.addEventListener("dragover", (e) => {
+      if (!reorderMode) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
-      const dragging = list.querySelector(".dragging");
+      const dragging = listEl.querySelector(".preset-row.dragging");
       if (!dragging) return;
-      const after = dragAfter(list, e.clientY);
-      if (after == null) list.appendChild(dragging);
-      else list.insertBefore(dragging, after);
-      renumber(list);
-      updateReorderStatus(list, statusEl, finalize);
-      autoscroll(list, e.clientY);
+      const after = dragAfter(listEl, e.clientY);
+      if (after == null) listEl.appendChild(dragging);
+      else listEl.insertBefore(dragging, after);
+      autoscroll(e.clientY);
     });
-  }
-
-  function openReorderModal(focusSlot) {
-    const slots = Object.keys(reorderSnapshot.bytes).map(Number).sort((a, z) => a - z);
-    const modal = document.createElement("div");
-    modal.className = "modal-overlay reorder-overlay";
-    modal.innerHTML = `
-      <div class="modal-card reorder-card">
-        <div class="reorder-head">
-          <h2>Reorder presets</h2>
-          <p class="subtitle">Drag presets to new slots. Slot numbers stay put — presets move into them. Finalize writes only the slots that changed.</p>
-        </div>
-        <div class="reorder-body"><ul class="reorder-list"></ul></div>
-        <div class="reorder-status subtitle"></div>
-        <div class="reorder-foot"></div>
-      </div>`;
-    const list = modal.querySelector(".reorder-list");
-    const statusEl = modal.querySelector(".reorder-status");
-    const foot = modal.querySelector(".reorder-foot");
-
-    slots.forEach((slot) => list.appendChild(buildReorderRow(slot)));
-    renumber(list);
-
-    const backup = mkBtn("⬇ Download bank backup", "reorder-backup");
-    backup.title = "Save a snapshot of all presets to a file before writing";
-    backup.onclick = downloadBankBackup;
-    const cancel = mkBtn("Cancel", "modal-btn");
-    cancel.onclick = () => closeReorder(modal);
-    const finalize = mkBtn("Finalize", "modal-btn primary");
-    finalize.disabled = true;
-    finalize.onclick = () => finalizeReorder(list, modal);
-    const btns = document.createElement("div");
-    btns.className = "reorder-foot-btns";
-    btns.append(backup, cancel, finalize);
-    foot.appendChild(btns);
-
-    wireReorderDrag(list, statusEl, finalize);
-    document.body.appendChild(modal);
-    updateReorderStatus(list, statusEl, finalize);
-
-    if (focusSlot != null) {
-      const row = [...list.children].find((r) => r.__item.origSlot === focusSlot);
-      if (row) { row.scrollIntoView({ block: "center" }); row.classList.add("focus-flash"); setTimeout(() => row.classList.remove("focus-flash"), 1200); }
-    }
   }
 
   function downloadBankBackup() {
@@ -1336,17 +1464,19 @@
     UI.toast("Saved a bank backup (all 100 presets).", "ok");
   }
 
-  async function finalizeReorder(list, modal) {
-    const order = currentOrder(list);
+  async function finalizeInlineReorder() {
+    if (!reorderMode) return;
+    const order = reorderMode.order;
     if (new Set(order).size !== order.length) { UI.toast("Internal error: the new order lost a preset — aborting.", "err"); return; }
+    if (!(await acquireSnapshot())) return;
     const writes = planReorder(reorderSnapshot.bytes, order);
-    if (!writes.length) { UI.toast("No changes to write.", "ok"); return; }
+    if (!writes.length) { UI.toast("No changes to write — the pedal already matches this order.", "ok"); finishReorder(); render(); return; }
     const est = fmtDur(writes.length * REORDER_WRITE_MS);
     const ok = await UI.confirmDialog(
       `Write ${writes.length} preset${writes.length > 1 ? "s" : ""} to the pedal to apply the new order? This takes about ${est}. Keep this tab in the foreground and don't unplug the pedal until it finishes. Make sure Valeton Suite is closed.`,
       `Write ${writes.length} presets`);
     if (!ok) return;
-    await runReorderWrites(writes, list, modal);
+    await runReorderWrites(writes);
   }
 
   async function commitReorderCache(writes) {
@@ -1371,9 +1501,9 @@
     return { fill: wrap.querySelector(".reorder-fill"), txt: wrap.querySelector(".reorder-prog-text") };
   }
 
-  async function runReorderWrites(writes, list, modal) {
-    const foot = modal.querySelector(".reorder-foot");
-    const { fill, txt } = reorderProgressUI(foot);
+  async function runReorderWrites(writes) {
+    const bar = $("reorder-inline-bar");
+    const { fill, txt } = reorderProgressUI(bar);
     const done = [];
     for (let i = 0; i < writes.length; i++) {
       const w = writes[i];
@@ -1383,38 +1513,42 @@
         done.push(w);
         fill.style.width = `${Math.round(((i + 1) / writes.length) * 100)}%`;
       } catch (e) {
-        await reorderFailure(writes, done, { w, i, error: e.message }, foot, list, modal);
+        await reorderFailure(writes, done, { w, i, error: e.message });
         return;
       }
     }
     txt.textContent = "Updating…";
+    reorderMode = null; // the refresh below renders the normal list again
     await commitReorderCache(writes);
     UI.toast(`Reordered — wrote ${writes.length} preset${writes.length > 1 ? "s" : ""} to the pedal.`, "ok");
-    closeReorder(modal);
+    finishReorder();
   }
 
-  async function reorderFailure(writes, done, failed, foot, list, modal) {
-    await commitReorderCache(done); // reflect what actually got written
-    foot.innerHTML = "";
+  async function reorderFailure(writes, done, failed) {
+    reorderMode = null;
+    await commitReorderCache(done); // the list below reflects what actually got written
+    const bar = $("reorder-inline-bar");
+    bar.innerHTML = "";
     const msg = document.createElement("p");
     msg.className = "reorder-fail-msg";
     msg.textContent = `Write failed at slot ${failed.w.slot} (${failed.error}). ${done.length} of ${writes.length} presets were written — your bank is partly reordered.`;
     const leave = mkBtn("Leave as-is", "modal-btn");
-    leave.onclick = () => closeReorder(modal);
+    leave.onclick = () => { finishReorder(); render(); };
     const rollback = mkBtn("↺ Roll back written slots", "modal-btn");
-    rollback.onclick = () => rollbackReorder(done, foot, modal);
+    rollback.onclick = () => rollbackReorder(done);
     const retry = mkBtn(`Retry remaining (${writes.length - failed.i})`, "modal-btn primary");
-    retry.onclick = () => runReorderWrites(writes.slice(failed.i), list, modal);
+    retry.onclick = () => runReorderWrites(writes.slice(failed.i));
     const row = document.createElement("div");
     row.className = "reorder-foot-btns";
     row.append(leave, rollback, retry);
-    foot.append(msg, row);
+    bar.append(msg, row);
   }
 
   // Rewrite the ORIGINAL bytes back to every slot we changed, undoing the partial
   // reorder. Originals come from the immutable snapshot.
-  async function rollbackReorder(done, foot, modal) {
-    const { fill, txt } = reorderProgressUI(foot);
+  async function rollbackReorder(done) {
+    const bar = $("reorder-inline-bar");
+    const { fill, txt } = reorderProgressUI(bar);
     const rolled = [];
     for (let i = 0; i < done.length; i++) {
       const dest = done[i].slot;
@@ -1427,7 +1561,8 @@
     }
     await commitReorderCache(rolled);
     UI.toast(`Rolled back ${rolled.length} slot${rolled.length === 1 ? "" : "s"} to the original presets.`, rolled.length === done.length ? "ok" : "err");
-    closeReorder(modal);
+    finishReorder();
+    render();
   }
 
   function installReorderButton() {
@@ -1435,13 +1570,20 @@
     const bar = $("device-bar");
     if (!bar || bar.querySelector(".reorder-btn")) return;
     const btn = mkBtn("⇅ Reorder", "reorder-btn");
-    btn.title = "Rearrange presets across slots and write the changes in one batch";
-    btn.addEventListener("click", () => openReorder(null));
+    btn.title = "Rearrange presets right in the list below, then write the changes in one batch";
+    btn.addEventListener("click", () => {
+      if (reorderMode) { finishReorder(); render(); return; }
+      const reason = reorderBlockReason();
+      if (reason) { UI.toast(reason, "err"); return; }
+      enterReorderMode(true);
+    });
     const scanBtn = $("scan-btn");
     if (scanBtn) bar.insertBefore(btn, scanBtn); else bar.appendChild(btn);
   }
 
   function renderPresets() {
+    listEl.classList.toggle("reordering", !!reorderMode);
+    if (reorderMode) { renderReorderList(); return; }
     const shown = patches.filter((p) => matchesFilters(p) && matchesSearch(p));
     listEl.innerHTML = "";
     emptyEl.hidden = shown.length > 0;
@@ -1449,6 +1591,7 @@
     shown.forEach((p) => {
       const li = document.createElement("li");
       li.className = "preset-row";
+      li.__slot = p.slot;
       const isOpen = expanded.has(p.slot);
       const isActive = p.slot === activeSlot;
       if (isActive) li.classList.add("preset-active");
@@ -1458,12 +1601,20 @@
         `<span class="preset-num">#${p.slot}</span> <span class="preset-name">${curName(p).replace(/</g, "&lt;")}</span>` +
         (isActive ? ' <span class="badge active-badge">● Active on pedal</span>' : "") +
         (p.uses_snaptone ? ' <span class="badge st">SnapTone</span>' : "");
-      // reorder grip (left of the slot number) → opens the batched reorder flow
+      // reorder grip (left of the slot number) → drag the row to a new slot
       if (window.DeviceBridge && DeviceBridge.webmidiAvailable()) {
         const grip = document.createElement("button");
         grip.type = "button"; grip.className = "reorder-grip"; grip.textContent = "☰";
-        grip.title = "Reorder presets — drag them to new slots, then write in one batch";
-        grip.addEventListener("click", (ev) => { ev.stopPropagation(); openReorder(p.slot); });
+        const reason = reorderBlockReason();
+        if (reason) { grip.classList.add("disabled"); grip.title = reason; }
+        else grip.title = "Drag to move this preset to a new slot (click to enter reorder mode)";
+        grip.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          if (reorderMode) return;
+          const r = reorderBlockReason();
+          if (r) { UI.toast(r, "err"); return; }
+          enterReorderMode(true);
+        });
         head.insertBefore(grip, head.firstChild);
       }
       // full block chain, right-aligned, bypassed blocks dimmed (matches the Designer)
@@ -1484,6 +1635,39 @@
         li.appendChild(renderDetail(p));
         li.appendChild(slotActions(p));
       }
+      listEl.appendChild(li);
+    });
+  }
+
+  // reorder-mode rows: compact, collapsed, numbered by DESTINATION slot
+  function renderReorderList() {
+    const bySlot = new Map(patches.map((p) => [p.slot, p]));
+    listEl.innerHTML = "";
+    emptyEl.hidden = true;
+    countEl.textContent = `reordering ${patches.length} presets`;
+    reorderMode.order.forEach((slot, dest) => {
+      const p = bySlot.get(slot);
+      if (!p) return;
+      const li = document.createElement("li");
+      li.className = "preset-row";
+      li.__slot = slot;
+      if (slot !== dest) li.classList.add("moved");
+      const head = document.createElement("div");
+      head.className = "preset-head";
+      const grip = document.createElement("button");
+      grip.type = "button"; grip.className = "reorder-grip"; grip.textContent = "☰";
+      grip.title = "Drag to a new slot";
+      head.appendChild(grip);
+      head.insertAdjacentHTML("beforeend",
+        `<span class="preset-num">#${dest}</span> <span class="preset-name">${curName(p).replace(/</g, "&lt;")}</span>` +
+        (slot !== dest ? ` <span class="reorder-orig">was #${slot}</span>` : ""));
+      const chips = document.createElement("div");
+      chips.className = "chip-row";
+      const chain = p.blocks.filter((b) => b.model);
+      chain.forEach((b) => chips.appendChild(chip(b)));
+      if (!chain.length) chips.innerHTML = '<span class="subtitle">empty preset</span>';
+      head.appendChild(chips);
+      li.appendChild(head);
       listEl.appendChild(li);
     });
   }
@@ -1577,6 +1761,7 @@
   }
 
   async function selectPreset(p) {
+    if (reorderMode) return; // rows aren't selectable while arranging
     // leaving a live-edited preset for another one? decide what to do with the edits
     if (liveSlot != null && liveSlot !== p.slot) {
       if (isDirty(liveSlot)) {
@@ -1758,6 +1943,7 @@
     updateDeviceHeader();
     render();
     installReorderButton(); // WebMIDI-only "⇅ Reorder" in the device bar
+    wireInlineReorder(); // grip-drag reordering on the main list
     refreshDeviceStatus(); // non-blocking: light up click-to-select if a pedal is present
   }
 
@@ -1766,6 +1952,7 @@
 
   // test/debug surface for the reorder planner (pure) — mirrors nothing else
   window.__reorderTest = { planReorder, eqBytes };
+  window.__editTest = { editsSpec, isDirty, curOrder }; // block-reorder wiring checks
 
   init();
 })();

@@ -68,14 +68,14 @@ for (const ap of apiInv.patches) {
   const jp = jsBySlot[ap.slot];
   const tag = `#${ap.slot}`;
   if (!jp) { check(`${tag} present`, false); continue; }
-  for (const k of ["name", "empty", "uses_snaptone", "snaptone_slot", "ir_slot", "amp_slot", "ir_name", "amp_name", "snaptone_name"]) {
+  for (const k of ["name", "empty", "uses_snaptone", "snaptone_slot", "ir_slot", "amp_slot", "ir_name", "amp_name", "snaptone_name", "order"]) {
     check(`${tag}.${k}`, JSON.stringify(jp[k]) === JSON.stringify(ap[k]), `${JSON.stringify(jp[k])} vs ${JSON.stringify(ap[k])}`);
   }
   check(`${tag}.settings`, JSON.stringify(jp.settings) === JSON.stringify(ap.settings), `${JSON.stringify(jp.settings)} vs ${JSON.stringify(ap.settings)}`);
   check(`${tag} blockCount`, jp.blocks.length === ap.blocks.length);
   for (let i = 0; i < Math.min(jp.blocks.length, ap.blocks.length); i++) {
     const jb = jp.blocks[i], ab = ap.blocks[i];
-    for (const k of ["block", "active", "type", "model", "official", "index", "fxid", "label", "label_official"]) {
+    for (const k of ["block", "active", "type", "model", "official", "index", "fxid", "movable", "label", "label_official"]) {
       check(`${tag} b${i}.${k}`, JSON.stringify(jb[k]) === JSON.stringify(ab[k]), `${JSON.stringify(jb[k])} vs ${JSON.stringify(ab[k])}`);
     }
     cmpParams(`${tag} b${i}`, jb.params, ab.params);

@@ -972,36 +972,28 @@ input[type="range"]::-moz-range-thumb {
 }
 .reorder-grip:hover { opacity: 1; color: var(--text); }
 
-.reorder-card {
-  max-width: 680px; width: calc(100% - 2rem); max-height: 86vh;
-  display: flex; flex-direction: column; text-align: left; padding: 1.2rem 1.2rem 1rem;
+/* inline reorder mode: sticky control bar above the main list */
+.reorder-inline-bar {
+  position: sticky; top: 0.5rem; z-index: 30;
+  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  padding: 0.6rem 0.8rem; margin-bottom: 0.7rem;
+  background: var(--card-bg); border: 1px solid var(--accent);
+  border-radius: 10px; box-shadow: var(--shadow);
 }
-.reorder-head h2 { margin: 0 0 0.3rem; }
-.reorder-head .subtitle { margin: 0 0 0.8rem; }
-.reorder-body {
-  flex: 1 1 auto; min-height: 0; overflow: hidden;
-  border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
-}
-.reorder-list { list-style: none; margin: 0; padding: 0.3rem; overflow-y: auto; height: 56vh; }
-.reorder-row {
-  display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.55rem;
-  border-radius: 8px; background: var(--card-bg); border: 1px solid var(--border);
-  margin-bottom: 0.3rem; cursor: grab;
-}
-.reorder-row:last-child { margin-bottom: 0; }
-.reorder-row.dragging { opacity: 0.5; cursor: grabbing; }
-.reorder-row.moved { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--card-bg)); }
-.reorder-row.focus-flash { box-shadow: 0 0 0 2px var(--accent); }
-.reorder-grip2 { color: var(--muted); font-size: 0.85rem; flex: none; }
-.reorder-slot { font-variant-numeric: tabular-nums; font-weight: 800; color: var(--text); min-width: 2.6em; flex: none; }
-.reorder-info { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
-.reorder-line1 { display: flex; align-items: baseline; gap: 0.45rem; min-width: 0; }
-.reorder-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reorder-inline-status { font-variant-numeric: tabular-nums; }
+/* progress / failure UI swapped into the bar takes the full row */
+.reorder-inline-bar .reorder-progress { flex: 1 1 100%; padding-top: 0; }
+.reorder-inline-bar .reorder-fail-msg { flex: 1 1 100%; margin: 0; }
+.reorder-inline-bar .reorder-foot-btns { flex: 1 1 100%; }
 .reorder-orig { color: var(--muted); font-size: 0.72rem; flex: none; }
-.reorder-summary { color: var(--muted); font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* while reordering: rows drag by the grip; everything else in the row is inert */
+.preset-list.reordering .preset-head { cursor: default; }
+.preset-list.reordering .chip { pointer-events: none; }
+.preset-row.dragging { opacity: 0.5; }
+.preset-row.moved { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--card-bg)); }
+.reorder-grip.disabled { cursor: default; opacity: 0.15; }
+.reorder-grip:active { cursor: grabbing; }
 
-.reorder-status { padding: 0.55rem 0.2rem 0.2rem; font-variant-numeric: tabular-nums; }
-.reorder-foot { padding-top: 0.5rem; }
 .reorder-foot-btns { display: flex; justify-content: flex-end; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
 .reorder-backup {
   margin-right: auto; border: 1px solid var(--border); background: var(--chip); color: var(--text);
@@ -1380,4 +1372,37 @@ input[type="range"]::-moz-range-thumb {
   font-size: 0.7rem; font-weight: 700; vertical-align: middle;
   background: var(--accent); color: #fff;
   padding: 0.15em 0.6em; border-radius: 999px; margin-left: 0.5rem;
+}
+
+/* --- block (signal-chain) reorder strip ------------------------------------ */
+.chain-strip-wrap { margin: 0 0 0.9rem; }
+.chain-strip-label { font-size: 0.72rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.35rem; }
+.chain-strip-label .hint { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.chain-strip {
+  display: flex; align-items: stretch; gap: 0.3rem; flex-wrap: nowrap;
+  overflow-x: auto; padding: 0.35rem; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--bg);
+}
+.chain-chip {
+  display: flex; align-items: center; gap: 0.3rem; flex: none;
+  padding: 0.32rem 0.55rem; border-radius: 7px; font-size: 0.78rem; font-weight: 700;
+  border: 1px solid var(--border); background: var(--card-bg); color: var(--text);
+  white-space: nowrap; user-select: none;
+}
+.chain-chip.movable { cursor: grab; border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.chain-chip.movable:hover { border-color: var(--accent); }
+.chain-chip.dragging { opacity: 0.5; cursor: grabbing; }
+.chain-chip.locked { cursor: default; color: var(--muted); background: transparent; border-color: transparent; font-weight: 600; }
+.chain-chip.bypassed-chip { opacity: 0.4; }
+.chain-grip { color: var(--muted); font-size: 0.8rem; line-height: 1; }
+.chain-chip.blk-nr { border-left: 3px solid var(--blk-nr); }
+.chain-chip.blk-pre { border-left: 3px solid var(--blk-pre); }
+.chain-chip.blk-mod { border-left: 3px solid var(--blk-mod); }
+.chain-chip.blk-dly { border-left: 3px solid var(--blk-dly); }
+.chain-chip.blk-rvb { border-left: 3px solid var(--blk-rvb); }
+/* the fixed amp core: one atomic, non-draggable group */
+.chain-core {
+  display: flex; align-items: stretch; gap: 0.1rem; flex: none;
+  padding: 0.1rem 0.25rem; border: 1px dashed var(--border); border-radius: 8px;
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
 }

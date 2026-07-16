@@ -42,6 +42,9 @@ BODY_OFF = 0x29  # NAME_OFF + NAME_LEN
 
 REC_MODELS = bytes([0x03, 0x30, 0x28, 0x00])
 REC_BYPASS = bytes([0x01, 0x30, 0x04, 0x00])
+REC_ORDER = bytes(
+    [0x02, 0x30, 0x0A, 0x00]
+)  # 10-byte chain-order permutation (re/DEVICE_BLOCKORDER.md)
 REC_PARAMS = bytes([0x04, 0x30, 0x40, 0x01])
 FS_TRAILER = bytes(
     [0x03, 0x00, 0x0A, 0x00]
@@ -213,6 +216,39 @@ def bypass_offset(b: bytes) -> int:
     """Offset of the bypass u32 (after the REC_BYPASS magic), or -1."""
     i = b.find(REC_BYPASS)
     return i + 4 if i >= 0 else -1
+
+
+def order_offset(b: bytes) -> int:
+    """Offset of the 10-byte chain-order record (after REC_ORDER magic), or -1."""
+    i = b.find(REC_ORDER)
+    return i + 4 if i >= 0 else -1
+
+
+def read_order(b: bytes) -> list:
+    """Chain (signal-path) order: order[chain_pos] = model-record index there.
+    Records stay in fixed storage order; only this permutes. Missing -> identity."""
+    o = order_offset(b)
+    if o < 0:
+        return list(range(N_BLOCKS))
+    return list(b[o : o + N_BLOCKS])
+
+
+def is_permutation(order) -> bool:
+    return (
+        order is not None
+        and len(order) == N_BLOCKS
+        and sorted(int(x) for x in order) == list(range(N_BLOCKS))
+    )
+
+
+def write_order(b: bytearray, order) -> None:
+    if not is_permutation(order):
+        raise ValueError(f"chain order must be a permutation of 0..{N_BLOCKS - 1}")
+    o = order_offset(b)
+    if o < 0:
+        raise ValueError("patch has no chain-order record")
+    for i in range(N_BLOCKS):
+        b[o + i] = int(order[i])
 
 
 def param_floats(b: bytes) -> list:

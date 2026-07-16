@@ -16,6 +16,7 @@
   const SENTINEL = [0xff, 0xff, 0xff, 0xff];
   const REC_MODELS = [0x03, 0x30, 0x28, 0x00];
   const REC_BYPASS = [0x01, 0x30, 0x04, 0x00];
+  const REC_ORDER = [0x02, 0x30, 0x0a, 0x00]; // 10-byte chain-order permutation (see re/DEVICE_BLOCKORDER.md)
   const REC_PARAMS = [0x04, 0x30, 0x40, 0x01];
   const FS_TRAILER = [0x03, 0x00, 0x0a, 0x00];
   const FS_TRAILER_GP5 = [0x03, 0x00, 0x08, 0x00];
@@ -120,7 +121,28 @@
     return -1;
   }
   const bypassOffset = (b) => { const i = indexOf(b, REC_BYPASS); return i >= 0 ? i + 4 : -1; };
+  const orderOffset = (b) => { const i = indexOf(b, REC_ORDER); return i >= 0 ? i + 4 : -1; };
   const paramsOffset = (b) => { const i = indexOf(b, REC_PARAMS); return i >= 0 ? i + 4 : -1; };
+  // Chain (signal-path) order: 10-byte permutation, order[chainPos] = model-record
+  // index at that position. Records stay in fixed storage order; only this permutes.
+  // Missing record -> identity 0..9 (canonical order).
+  function readOrder(b) {
+    b = u8(b); const o = orderOffset(b);
+    if (o < 0) return Array.from({ length: N_BLOCKS }, (_, i) => i);
+    return Array.from(b.subarray(o, o + N_BLOCKS));
+  }
+  function isPermutation(order) {
+    if (!order || order.length !== N_BLOCKS) return false;
+    const seen = new Set();
+    for (const v of order) { if (!Number.isInteger(v) || v < 0 || v >= N_BLOCKS || seen.has(v)) return false; seen.add(v); }
+    return true;
+  }
+  function writeOrder(b, order) {
+    if (!isPermutation(order)) throw new Error(`chain order must be a permutation of 0..${N_BLOCKS - 1}`);
+    const o = orderOffset(b);
+    if (o < 0) throw new Error("patch has no chain-order record");
+    for (let i = 0; i < N_BLOCKS; i++) b[o + i] = order[i];
+  }
   function bypassMask(b) { const o = bypassOffset(b); return o >= 0 ? dv(b).getUint32(o, true) : 0; }
   function paramFloats(b) {
     const o = paramsOffset(b), d = dv(b), out = [];
@@ -301,6 +323,9 @@
     // 5. patch name (16-byte name region)
     if (edits.name != null) writeName(b, String(edits.name));
 
+    // 6. chain (signal-path) order — 10-byte permutation of the model records
+    if (edits.order != null) writeOrder(b, edits.order);
+
     refixCrc(b);
     return b;
   }
@@ -327,7 +352,8 @@
     NAME_OFF, BODY_OFF, NAME_LEN, CRC_OFF, SETTINGS_OFF, N_BLOCKS, N_PARAM_SLOTS,
     GP50, GP5, DEVICES, profileFor, bodyLen,
     crc8, refixCrc, detect, readName, writeName, rebuild,
-    modelsOffset, modelRecords, modelRecOffset, bypassOffset, paramsOffset, bypassMask, paramFloats, fsOffset, findTLV,
+    modelsOffset, modelRecords, modelRecOffset, bypassOffset, orderOffset, paramsOffset, bypassMask, paramFloats, fsOffset, findTLV,
+    readOrder, writeOrder, isPermutation,
     readVolBpm, readFootswitches, checkConvertible, convert, applyEdits,
     BLANK_B64, blankPrst,
   };

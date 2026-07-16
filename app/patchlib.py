@@ -69,6 +69,9 @@ AMP_CATS = (0x07, 0x08)
 
 # blocks in bitmask/model-record order (bit i = block i active)
 BLOCK_NAMES = ["NR", "PRE", "DST", "AMP", "CAB", "EQ", "MOD", "DLY", "RVB", "N->S"]
+# reorderable blocks; the rest (DST·N->S·AMP·CAB·EQ) are a fixed atomic core
+# (re/DEVICE_BLOCKORDER.md)
+MOVABLE_BLOCKS = frozenset({"NR", "PRE", "MOD", "DLY", "RVB"})
 USER_IR_BASE = 0x100000  # CAB fxlow >= this => a User IR slot (0x0A10xxxx fxid)
 
 # Slot domains — three different ranges that are easy to conflate:
@@ -254,6 +257,7 @@ def _blocks_for(b: bytes, ns_label: dict) -> list[dict]:
                 "official": official,  # official gear reference (Green OD -> Ibanez TS808)
                 "index": idx,
                 "fxid": fxid,  # (cat<<24)|fxlow — current model id (for library/model-swap)
+                "movable": block in MOVABLE_BLOCKS,
                 "label": _block_label(block, btype, model),
                 "label_official": _block_label(
                     block, btype, official or model
@@ -349,6 +353,7 @@ def _load() -> tuple:
             slot_label.get(p["snaptone_slot"], "") if p["snaptone_slot"] else ""
         )
         p["blocks"] = _blocks_for(raw[p["slot"]], slot_label)
+        p["order"] = fmt.read_order(raw[p["slot"]])  # chain[pos] = block(record) index
 
     # IR/Cab inventory: the FULL catalog (factory cabs + all User IR slots),
     # not just what patches happen to reference. Sorted factory-first, then
@@ -629,6 +634,10 @@ def apply_edits_bytes(b: bytearray, edits: dict) -> None:
     # 5. patch name (16-byte name region at NAME_OFF)
     if edits.get("name") is not None:
         fmt.write_name(b, str(edits["name"]))
+
+    # 6. chain (signal-path) order — 10-byte permutation of the model records
+    if edits.get("order") is not None:
+        fmt.write_order(b, edits["order"])
 
     fmt.refix_crc(b)
 

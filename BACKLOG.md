@@ -17,6 +17,10 @@ IDs are stable so we can burn down incrementally.
   footswitch-active state and/or `.preset-active` / active-block highlight — several
   red accents may need switching.)
 - [ ] **EXP-4** — Make the drag grip (hamburger) **bigger**. It's too small to grab.
+- [ ] **EXP-6** — On the collapsed preset row header, **hide** disengaged (bypassed)
+  blocks instead of dimming them — clears the clutter of dimmed chips. Expanded row
+  is unchanged (disengaged blocks still shown, collapsed-by-default). Only the
+  header chip-row filters out inactive blocks.
 - [ ] **EXP-5** — Multi-select + bulk actions:
   - [ ] **EXP-5a** — Checkbox per preset row, to the right of the drag grip.
   - [ ] **EXP-5b** — Select all / none control.

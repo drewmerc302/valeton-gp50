@@ -1,0 +1,5 @@
+{
+  "buildCommand": "node scripts/build_static_data.mjs && node scripts/build_static_site.mjs",
+  "outputDirectory": "dist",
+  "cleanUrls": true
+}

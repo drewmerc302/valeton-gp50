@@ -36,3 +36,4 @@ re/*.gpr
 
 # static site build output
 dist/
+/dist

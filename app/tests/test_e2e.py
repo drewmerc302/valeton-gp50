@@ -58,6 +58,11 @@ def _row_states(page) -> list[dict]:
 
 
 @pytest.mark.slow
+@pytest.mark.skip(
+    reason="CONV-1: the NAM A2->A1 form was removed from / (placeholder now points "
+    "at the future standalone NAM repo per CONV-2). Re-target this e2e at that repo "
+    "once it exists rather than deleting it outright."
+)
 def test_convert_e2e_real_conversion(page, live_server, tmp_path):
     SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
     assert GOOD_NAM.exists(), f"missing fixture: {GOOD_NAM}"

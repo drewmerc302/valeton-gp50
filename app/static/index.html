@@ -16,81 +16,29 @@
       <div class="nav-pills">
         <a href="/explorer">Preset Explorer</a>
         <a href="/device">Captures &amp; IRs</a>
-        <a href="/" class="active">NAM and Preset Converter</a>
+        <a href="/" class="active">Preset Converter</a>
       </div>
       <div class="nav-spacer"></div>
       <button type="button" id="theme-toggle" class="theme-toggle">☾ Dark</button>
     </nav>
   </header>
   <div class="page-head">
-    <h1>NAM and Preset Converter</h1>
-    <p class="subtitle">Two independent tools: distill NAM captures for the pedal, and convert presets between the GP-5 and GP-50.</p>
+    <h1>Preset Converter</h1>
+    <p class="subtitle">Convert presets between the GP-5 and GP-50.</p>
   </div>
 
   <main>
-    <!-- STATIC-STRIP:START — NAM converter (backend/torch-only; removed from the static build) -->
-    <!-- ============ NAM Capture: A2 -> A1 ============ -->
     <div class="convert-section">
       <div class="section-head">
         <h2>NAM Capture &nbsp;<span class="section-tag">A2 → A1</span></h2>
-        <p class="section-desc">Distill a modern NAM <b>A2</b> capture down to the <b>A1</b> architecture the pedal can load.
-          Renders a DI through the A2 model and trains an A1 model to reproduce it, then exports a device-ready <code>.nam</code>.</p>
+        <p class="section-desc">Moved out to its own standalone tool.</p>
       </div>
-
       <section class="card">
-        <h3>1. Files</h3>
-        <div id="drop-zone" class="drop-zone" tabindex="0">
-          <p>Drag &amp; drop <code>.nam</code> files here, or</p>
-          <button type="button" id="file-picker-btn">Choose files&hellip;</button>
-          <input type="file" id="file-input" accept=".nam" multiple hidden />
-        </div>
-        <ul id="file-list" class="file-list"></ul>
-      </section>
-
-      <section class="card">
-        <h3>2. Config</h3>
-        <div class="config-grid">
-          <div class="field">
-            <label>Output format</label>
-            <div class="format-toggle" id="format-toggle">
-              <label class="radio-pill">
-                <input type="radio" name="output_format" id="format-05x" value="0.5x" checked />
-                0.5.x <span class="hint">— Valeton GP-5 / GP-50</span>
-              </label>
-              <label class="radio-pill">
-                <input type="radio" name="output_format" id="format-070" value="0.7.0" />
-                0.7.0 <span class="hint">— other NAM gear / plugins (non-Valeton)</span>
-              </label>
-            </div>
-          </div>
-
-          <div class="field">
-            <label for="epochs">Training epochs</label>
-            <input type="number" id="epochs" min="1" step="1" value="80" />
-            <p class="field-help">How many passes the A1 model trains for. More = closer to the A2 tone,
-              but slower (roughly linear).</p>
-            <ul class="epoch-guide">
-              <li><b>5–20</b> — quick preview. Rough, artifacts likely; use only to sanity-check a file.</li>
-              <li><b>40–80</b> — the sweet spot. Faithful tone at a sane runtime. <b>80 is the default.</b></li>
-              <li><b>100–200</b> — chasing the last few %. Diminishing returns and noticeably longer.</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      <section class="card actions">
-        <button type="button" id="convert-btn" disabled>Convert</button>
-        <div id="error-banner" class="error-banner" role="alert" hidden></div>
-      </section>
-
-      <section class="card" id="results-section" hidden>
-        <h3>3. Progress</h3>
-        <div id="results"></div>
+        <p class="subtitle">The NAM A2 → A1 distiller now lives in its own repo (link coming soon).</p>
       </section>
     </div>
 
     <div class="section-divider" role="separator"></div>
-    <!-- STATIC-STRIP:END -->
 
     <!-- ============ Preset: GP-5 <-> GP-50 ============ -->
     <div class="convert-section">
@@ -137,7 +85,6 @@
   <script src="/static/error_report.js"></script>
   <script src="/static/env_check.js"></script>
   <script src="/static/ui_core.js"></script>
-  <script src="/static/app.js"></script>
   <script src="/static/prst.js"></script>
   <script src="/static/convert_prst.js"></script>
 </body>

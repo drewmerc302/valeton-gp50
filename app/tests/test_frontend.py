@@ -18,44 +18,35 @@ def test_index_serves_html_with_key_hooks():
     assert "text/html" in resp.headers["content-type"]
     html = resp.text
     for hook in (
-        'id="drop-zone"',
-        'id="file-input"',
-        'id="format-toggle"',
-        'id="format-05x"',
-        'id="format-070"',
-        'id="epochs"',
-        'id="convert-btn"',
-        'id="results-section"',
-        'id="results"',
+        'id="prst-drop"',
+        'id="prst-target"',
+        'id="prst-convert-btn"',
     ):
         assert hook in html, f"missing hook: {hook}"
 
 
-def test_convert_page_shows_both_tools_stacked():
-    """Both Convert tools are visible on one page (no tabs): NAM (A2->A1) on top,
-    the GP-5<->GP-50 preset converter below."""
+def test_convert_page_shows_preset_tool_and_nam_placeholder():
+    """CONV-1: the page is the GP-5<->GP-50 preset converter now — the NAM
+    (A2->A1) form is gone, replaced by a placeholder pointing at its future
+    standalone repo (CONV-2)."""
     html = client.get("/").text
     for hook in (
-        'id="drop-zone"',  # NAM section
-        'id="prst-drop"',  # preset section
+        'id="prst-drop"',
         'id="prst-target"',
         'id="prst-convert-btn"',
         "convert_prst.js",
     ):
         assert hook in html, f"missing convert hook: {hook}"
-    # the sub-tab switcher is gone; the Fast (test) button and DI field are removed
-    assert "convert-subtabs" not in html and "data-tab=" not in html
-    assert 'id="fast-preset"' not in html and 'id="di-info"' not in html
-
-
-def test_format_070_present_and_enabled():
-    # T1b wired up the 0.7.0 export path — the radio is no longer disabled.
-    html = client.get("/").text
-    assert 'id="format-070"' in html
-    # order-independent check that the 0.7.0 radio does NOT carry disabled
-    start = html.index('id="format-070"')
-    tag_end = html.index(">", start)
-    assert "disabled" not in html[start:tag_end]
+    assert "Preset Converter" in html
+    assert "own repo" in html  # NAM placeholder copy
+    # the NAM conversion form itself is gone from this page
+    for hook in (
+        'id="drop-zone"',
+        'id="file-input"',
+        'id="format-toggle"',
+        'id="convert-btn"',
+    ):
+        assert hook not in html, f"stale NAM hook still present: {hook}"
 
 
 def test_static_app_js_served():

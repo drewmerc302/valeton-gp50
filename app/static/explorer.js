@@ -560,14 +560,14 @@
       if (!DeviceBridge.connected()) { if (note) note.textContent = "Connecting to pedal…"; await DeviceBridge.connect(); }
       const blank = window.PRST.blankPrst((inventoryDevice && inventoryDevice.key) || "gp50");
       if (note) note.textContent = `Clearing slot ${p.slot}…`;
-      const r = await withTimeout(
+      await withTimeout(
         DeviceBridge.writeSlot(p.slot, blank), 15000,
         "clear timed out — is this tab in the background? (bring it to the front)");
       edits.delete(p.slot);
       if (liveSlot === p.slot) { liveSlot = null; liveBase = null; }
       await syncSlotCache(p.slot, blank);
       renderPresets();
-      UI.toast(`Cleared slot ${p.slot} to a blank preset (${r.acks}/${r.sent} ACKs).`, "ok");
+      UI.toast(`Cleared slot ${p.slot} to a blank preset.`, "ok");
     } catch (err) {
       if (note) note.textContent = `Clear failed: ${err.message}`;
       UI.toast(`Clear failed: ${err.message}`, "err");
@@ -1025,7 +1025,7 @@
       });
       if (!j.ok) throw new Error(j.error || "write failed");
       const vn = j.verified_name ? ` — slot now reads "${j.verified_name}"` : "";
-      if (note) note.textContent = `✓ Written to slot ${target} (${j.acks}/${j.packets} ACKs)${vn}.`;
+      if (note) note.textContent = `✓ Written to slot ${target}${vn}.`;
     } catch (err) {
       if (note) note.textContent = `Write failed: ${err.message}`;
     }
@@ -1098,11 +1098,11 @@
     try {
       const edited = window.PRST.applyEdits(liveBase, editsSpec(slot));
       liveNote(slot, "Writing to the pedal…");
-      const r = await withTimeout(
+      await withTimeout(
         DeviceBridge.writeSlot(slot, edited), 15000,
         "write timed out — is this tab in the background? (bring it to the front)"
       );
-      liveNote(slot, `✓ Live: slot ${slot} written (${r.acks}/${r.sent} ACKs)`, "ok");
+      liveNote(slot, `✓ Live: slot ${slot} written`, "ok");
     } catch (err) {
       liveNote(slot, `Live write failed: ${err.message}`, "err");
     } finally {
@@ -1565,22 +1565,6 @@
     render();
   }
 
-  function installReorderButton() {
-    if (!(window.DeviceBridge && DeviceBridge.webmidiAvailable())) return;
-    const bar = $("device-bar");
-    if (!bar || bar.querySelector(".reorder-btn")) return;
-    const btn = mkBtn("⇅ Reorder", "reorder-btn");
-    btn.title = "Rearrange presets right in the list below, then write the changes in one batch";
-    btn.addEventListener("click", () => {
-      if (reorderMode) { finishReorder(); render(); return; }
-      const reason = reorderBlockReason();
-      if (reason) { UI.toast(reason, "err"); return; }
-      enterReorderMode(true);
-    });
-    const scanBtn = $("scan-btn");
-    if (scanBtn) bar.insertBefore(btn, scanBtn); else bar.appendChild(btn);
-  }
-
   function renderPresets() {
     listEl.classList.toggle("reordering", !!reorderMode);
     if (reorderMode) { renderReorderList(); return; }
@@ -1617,13 +1601,18 @@
         });
         head.insertBefore(grip, head.firstChild);
       }
-      // full block chain, right-aligned, bypassed blocks dimmed (matches the Designer)
+      // full block chain, right-aligned; bypassed blocks are hidden here (not dimmed)
+      // to keep the collapsed header uncluttered — the expanded detail below still
+      // shows every block, active or not.
       const chips = document.createElement("div");
       chips.className = "chip-row";
       const chain = p.blocks.filter((b) => b.model);
-      chain.forEach((b) => chips.appendChild(chip(b)));
+      const engaged = chain.filter((b) => b.active);
+      engaged.forEach((b) => chips.appendChild(chip(b)));
       if (!chain.length)
         chips.innerHTML = '<span class="subtitle">empty preset</span>';
+      else if (!engaged.length)
+        chips.innerHTML = '<span class="subtitle">all blocks off</span>';
       head.appendChild(chips);
       const caret = document.createElement("span");
       caret.className = "caret";
@@ -1942,7 +1931,6 @@
     renderSaved();
     updateDeviceHeader();
     render();
-    installReorderButton(); // WebMIDI-only "⇅ Reorder" in the device bar
     wireInlineReorder(); // grip-drag reordering on the main list
     refreshDeviceStatus(); // non-blocking: light up click-to-select if a pedal is present
   }

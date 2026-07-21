@@ -35,16 +35,6 @@ cpSync(resolve(staticDir, "data"), resolve(dist, "data"), { recursive: true });
 // Site map: index.html = Explorer (landing), convert.html = Converter, device.html = Captures.
 // Original nav routes -> /explorer (Explorer), / (Converter), /device (Captures).
 function processHtml(html) {
-  // strip backend-only sections marked in source (the NAM converter needs torch/
-  // Python — no client-side equivalent), its script, and rename the page.
-  html = html.replace(/[ \t]*<!-- STATIC-STRIP:START[\s\S]*?STATIC-STRIP:END -->\n?/g, "");
-  html = html.replace(/[ \t]*<script src="\/static\/app\.js"><\/script>\n?/g, "");
-  html = html.replace(/NAM and Preset Converter/g, "Preset Converter");
-  html = html.replace(
-    "Two independent tools: distill NAM captures for the pedal, and convert presets between the GP-5 and GP-50.",
-    "Convert presets between the GP-5 and GP-50."
-  );
-
   html = html.replaceAll("/static/", "");
   html = html.replace(/href="\/explorer"/g, 'href="index.html"')   // Explorer -> landing
     .replace(/href="\/device"/g, 'href="device.html"')             // Captures

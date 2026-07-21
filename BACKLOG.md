@@ -5,22 +5,36 @@ IDs are stable so we can burn down incrementally.
 
 ## Preset Explorer
 
-- [ ] **EXP-1** — Remove `(29/29 ACKs)` from the write-success message. Keep
+- [x] **EXP-1** — Remove `(29/29 ACKs)` from the write-success message. Keep
   `Written to slot N — slot now reads "X"`. The ACK count is debug noise that
   confuses users. (Also audit the Clear / Live / reorder success toasts for the
   same `(acks/sent)` string.)
-- [ ] **EXP-2** — Remove the top-bar `⇅ Reorder` button. Inline row drag
+- [x] **EXP-2** — Remove the top-bar `⇅ Reorder` button. Inline row drag
   (reorderMode via the grip) is now the entry point, so the button is redundant.
-- [ ] **EXP-3** — Active-state highlight is red and collides with the red DST block
+- [x] **EXP-3** — Active-state highlight is red and collides with the red DST block
   bar. Change the active background to **neon bright green** so it contrasts against
   every block color, on all rows. (Pin down the exact element first: the
   footswitch-active state and/or `.preset-active` / active-block highlight — several
   red accents may need switching.)
-- [ ] **EXP-4** — Make the drag grip (hamburger) **bigger**. It's too small to grab.
-- [ ] **EXP-6** — On the collapsed preset row header, **hide** disengaged (bypassed)
+- [x] **EXP-4** — Make the drag grip (hamburger) **bigger**. It's too small to grab.
+- [x] **EXP-6** — On the collapsed preset row header, **hide** disengaged (bypassed)
   blocks instead of dimming them — clears the clutter of dimmed chips. Expanded row
   is unchanged (disengaged blocks still shown, collapsed-by-default). Only the
   header chip-row filters out inactive blocks.
+- [x] **EXP-7** — Expanded preset detail view wastes a lot of horizontal space on
+  wide screens: block cards are full-width, so a block with only 1-4 params (e.g.
+  CAB · VOL only) leaves a huge dead strip to the right of its slider. Explore
+  layout alternatives — 2-col grid (params stacked vertically per block), 3-col
+  grid, wrap-to-fill params in the existing single column, sidebar-nav +
+  detail-pane — as visual mockups (Claude Designer / artifact) before committing to
+  a redesign in code. Decision: **3-col grid** wins — see EXP-8.
+- [ ] **EXP-8** — Implement the 3-col grid layout for the expanded preset detail
+  (winner of EXP-7's exploration — mockup: https://claude.ai/code/artifact/f97d619d-49be-4b3d-ad9e-79b3390df34a,
+  "3-column grid" tab). Blocks pack 3-per-row via CSS grid (`grid-auto-flow: row
+  dense`), params stack vertically inside each card instead of the current
+  horizontal row. Breakpoints: 3-col ≥1400px, 2-col ≥900px, 1-col below (today's
+  behavior, unchanged). Touches `renderDetail()`'s per-block loop and the
+  `.block-detail` / `.param-grid` CSS in `explorer.js` / `style.css`.
 - [ ] **EXP-5** — Multi-select + bulk actions:
   - [ ] **EXP-5a** — Checkbox per preset row, to the right of the drag grip.
   - [ ] **EXP-5b** — Select all / none control.
@@ -35,7 +49,7 @@ IDs are stable so we can burn down incrementally.
 
 ## Captures & IRs
 
-- [ ] **CAP-1** — Move the **Templates** pane above the **SnapTones** pane, so it's
+- [x] **CAP-1** — Move the **Templates** pane above the **SnapTones** pane, so it's
   obvious where/how to create a preset.
 - [ ] **CAP-2** — In the "List Presets" modal (per SnapTone), add reset controls so a
   user can zero presets before deleting a SnapTone:
@@ -50,7 +64,7 @@ IDs are stable so we can burn down incrementally.
 
 ## Preset Converter (page rename)
 
-- [ ] **CONV-1** — Rename "NAM and Preset Converter" → **"Preset Converter"**
+- [x] **CONV-1** — Rename "NAM and Preset Converter" → **"Preset Converter"**
   (page title + nav). Remove the NAM converter pane; replace it with a link to the
   future standalone NAM repo. (Static build already strips NAM; this removes it from
   the backend page too and updates naming.)
@@ -75,3 +89,17 @@ IDs are stable so we can burn down incrementally.
   auto-retry** on device writes (saw 28/29 ACKs + an occasional stale read when the
   tab was backgrounded; writes still persisted, but a verify loop would make it
   robust). Broader than any one feature.
+- [ ] **SNAP-1** — SnapTone conversion-quality investigation: Valeton Suite's NAM→
+  SnapTone conversion uses a bundled training/reamp signal (`nam_input_wav.wav` in
+  the app bundle, 44.1kHz/16-bit dual-mono, 70s) instead of the NAM community
+  standard `T3K-sweep-v3.wav` (48kHz/24-bit mono, 190s — same DI a2a1 already
+  trains against, `refs/v3_0_0.wav`). Swapped it in Suite.app (Mac): app doesn't
+  choke on the format/duration mismatch, import works, and the resulting SnapTone
+  is audibly different (much less gain/volume than Valeton's stock conversion on
+  the same source patch) — confirms the training signal is load-bearing for
+  conversion quality, contrary to the Reddit OP's guess that swapping it
+  "wouldn't solve anything." Not yet known which is *more accurate* — untested:
+  level-match both conversions first (raw "more gain" bias isn't meaningful
+  on its own), then A/B both against a ground-truth render of the same `.nam`
+  in a real NAM plugin (EQ curve + dynamics, not just loudness). Source:
+  reddit.com/r/guitarpedals/comments/1mqtgdb.

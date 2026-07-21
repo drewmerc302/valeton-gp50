@@ -16,7 +16,7 @@
       <div class="nav-pills">
         <a href="/explorer">Preset Explorer</a>
         <a href="/device" class="active">Captures &amp; IRs</a>
-        <a href="/">NAM and Preset Converter</a>
+        <a href="/">Preset Converter</a>
       </div>
       <div class="nav-spacer"></div>
       <button type="button" id="theme-toggle" class="theme-toggle">☾ Dark</button>
@@ -38,6 +38,17 @@
 
     <section class="card">
       <div class="dc-section-head">
+        <h2>Templates</h2><span class="count" id="tmpl-count"></span>
+        <span class="spacer"></span>
+        <span class="subtitle" style="font-size:0.78rem">saved effects wrappers</span>
+      </div>
+      <button type="button" id="tmpl-new-btn" class="tmpl-new">＋ Make a template from a preset</button>
+      <ul id="tmpl-list" class="tmpl-list"></ul>
+      <p id="tmpl-empty" class="tmpl-empty" hidden>No templates yet. Use <b>＋ Make a template from a preset</b> above, or choose <b>★ Create template from</b> on a preset in <a href="/explorer">Preset Explorer</a>.</p>
+    </section>
+
+    <section class="card">
+      <div class="dc-section-head">
         <h2>SnapTones</h2><span class="count" id="st-count"></span>
         <span class="spacer"></span>
         <span class="subtitle" style="font-size:0.78rem">your NAM captures</span>
@@ -54,17 +65,6 @@
       </div>
       <div id="ir-grid" class="asset-grid"></div>
       <p id="ir-empty" class="subtitle" hidden>No user IRs loaded.</p>
-    </section>
-
-    <section class="card">
-      <div class="dc-section-head">
-        <h2>Templates</h2><span class="count" id="tmpl-count"></span>
-        <span class="spacer"></span>
-        <span class="subtitle" style="font-size:0.78rem">saved effects wrappers</span>
-      </div>
-      <button type="button" id="tmpl-new-btn" class="tmpl-new">＋ Make a template from a preset</button>
-      <ul id="tmpl-list" class="tmpl-list"></ul>
-      <p id="tmpl-empty" class="tmpl-empty" hidden>No templates yet. Use <b>＋ Make a template from a preset</b> above, or choose <b>★ Create template from</b> on a preset in <a href="/explorer">Preset Explorer</a>.</p>
     </section>
   </main>
 

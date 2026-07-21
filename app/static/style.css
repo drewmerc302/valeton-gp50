@@ -12,6 +12,8 @@
   --slider: #2a6fdb;
   --ok: #2f9e8f;
   --fail: #d8434a;
+  --active-neon: #39ff14;
+  --active-neon-text: #062b02;
   --track: #e7e9ed;
   --chip: #f0f1f4;
   --radius: 12px;
@@ -759,13 +761,15 @@ button:disabled {
 .block-detail.bypassed .block-detail-head .fs-toggle {
   background: var(--track); color: var(--muted); border-color: var(--border);
 }
-/* FS pill — ASSIGNED look. One strong, consistent highlight (accent fill + white
-   ring + bold) that reads clearly on BOTH the colored active header and the muted
-   bypassed header, so it's always obvious which switch a block is assigned to.
-   Both selectors out-specify the off rules above (incl. the bypassed 0,4,0). */
+/* FS pill — ASSIGNED look. One strong, consistent highlight (neon-green fill +
+   white ring + bold) that reads clearly on BOTH the colored active header and the
+   muted bypassed header, so it's always obvious which switch a block is assigned
+   to. Neon green (not the red accent) so it never blends into a red block's own
+   colored header (e.g. DST). Both selectors out-specify the off rules above
+   (incl. the bypassed 0,4,0). */
 .block-detail-head .fs-toggle.on,
 .block-detail.bypassed .block-detail-head .fs-toggle.on {
-  background: var(--accent); color: var(--accent-text);
+  background: var(--active-neon); color: var(--active-neon-text);
   border-color: #fff; font-weight: 800;
 }
 /* the on/off switch: translucent-white track on colored headers, active = knob right */
@@ -885,7 +889,7 @@ input[type="range"]::-moz-range-thumb {
   padding: 0.1em 0.45em; border-radius: 4px; cursor: pointer;
   border: 1px solid var(--border); background: var(--track); color: var(--muted);
 }
-.fs-toggle.on { color: var(--accent-text); background: var(--accent); border-color: var(--accent); }
+.fs-toggle.on { color: var(--active-neon-text); background: var(--active-neon); border-color: var(--active-neon); }
 /* FS already has its 2 blocks and this isn't one of them: dimmed + not-allowed,
    but still clickable (the JS swallows it + warns) so it can't collapse the row */
 .fs-toggle.full { opacity: 0.4; cursor: not-allowed; }
@@ -960,15 +964,11 @@ input[type="range"]::-moz-range-thumb {
 .clear-preset:hover { background: color-mix(in srgb, #d8434a 18%, transparent); }
 
 /* --- preset reordering ---------------------------------------------------- */
-.reorder-btn {
-  border: 1px solid var(--border); background: var(--card-bg); color: var(--text);
-  border-radius: 8px; padding: 0.4rem 0.8rem; font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer;
-}
-.reorder-btn:hover { border-color: var(--accent); }
 /* per-row grip, left of the slot number */
 .reorder-grip {
   flex: none; border: none; background: transparent; color: var(--muted);
-  font-size: 0.9rem; line-height: 1; cursor: grab; padding: 0 0.15rem; opacity: 0.4;
+  font-size: 1.4rem; line-height: 1; cursor: grab; padding: 0.2rem 0.4rem; opacity: 0.5;
+  min-width: 2rem; min-height: 2rem;
 }
 .reorder-grip:hover { opacity: 1; color: var(--text); }
 

@@ -514,7 +514,7 @@ button:disabled {
   padding: 1.6rem 1.6rem 1.2rem; max-width: 400px; width: calc(100% - 2rem);
   text-align: center;
 }
-.modal-msg { margin: 0 0 1.3rem; font-size: 0.98rem; line-height: 1.5; }
+.modal-msg { margin: 0 0 1.3rem; font-size: 0.98rem; line-height: 1.5; white-space: pre-line; }
 .modal-input {
   font: inherit; font-size: 0.95rem; width: 100%; box-sizing: border-box;
   padding: 0.5rem 0.6rem; margin: 0 0 1.1rem; text-align: left;

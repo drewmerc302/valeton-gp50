@@ -1,5 +1,9 @@
 # GP-50 Converter
 
+**Live demo:** [valeton-gp50-woad.vercel.app](https://valeton-gp50-woad.vercel.app) — zero-setup,
+runs in-browser (WebMIDI), no local install needed. See [Setup](#setup) below for the full
+local app with the batch converter.
+
 A local web app that converts NAM **A2** captures to NAM **A1** `.nam` files for the
 **Valeton GP-50**, in batch, with live progress — plus a read-only device usage
 inspector (mocked for now). Built on the A2→A1 distillation engine in [`a2a1/`](a2a1/README.md).

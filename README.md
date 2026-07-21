@@ -66,6 +66,10 @@ Then open **http://127.0.0.1:8756**.
 - `MVP_REQUIREMENTS.md`, `AUTONOMY.md`, `STATUS.md` — the MVP spec, the build-loop
   protocol, and live build status.
 
+## License
+
+[MIT](LICENSE)
+
 ## Scope
 
 MVP is **convert + read-only mocked device inspector**. Real device I/O (uploading to

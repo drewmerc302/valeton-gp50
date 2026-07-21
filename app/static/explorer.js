@@ -1901,7 +1901,7 @@
   const scanButtons = () => [$("scan-btn"), $("scan-btn-hero")].filter(Boolean);
 
   async function startScan() {
-    if (!(await UI.confirmDialog("Begin scan of all 100 presets?", "Begin scan"))) return;
+    if (!(await UI.confirmDialog("Begin scan of all 100 presets? Please ensure your device is connected to your computer via USB cable.", "Begin scan"))) return;
     scanButtons().forEach((b) => (b.disabled = true));
     $("scan-progress").hidden = false;
     $("scan-fill").style.width = "0%";

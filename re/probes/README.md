@@ -14,4 +14,9 @@ Notes:
 - `prst_reassign.py` used to write `patch/bank_map.json` by an inferred path —
   superseded by `read_bank_map.py` (live device read). Do not resurrect its writer.
 - The canonical protocol docs are `re/DEVICE_READ.md`, `re/DEVICE_WRITE.md`,
-  `re/SNAPTONE_PROTOCOL.md`, `re/REFIT_FINDINGS.md`.
+  `re/SNAPTONE_PROTOCOL.md`, `re/REFIT_FINDINGS.md`, `re/HTFW_FORMAT.md`.
+
+The HTFW firmware-container tools (`htfw_parse.py`, `htfw_extract.py`,
+`isa_fingerprint.py`, `find_proto.py`, `fw_similarity.py`) are self-contained and
+take paths as argv — unlike the older probes above, they run as-is from anywhere.
+See `re/HTFW_FORMAT.md`.

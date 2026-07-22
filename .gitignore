@@ -34,6 +34,11 @@ re/ghidra_*.txt
 re/*.rep
 re/*.gpr
 
+# vendor firmware / manuals (re-download from valeton.net; see re/HTFW_FORMAT.md)
+GP-5/
+GP-150 Presets/
+*.bin
+
 # static site build output
 dist/
 /dist

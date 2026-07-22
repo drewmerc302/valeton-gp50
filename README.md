@@ -4,14 +4,47 @@
 runs in-browser (WebMIDI), no local install needed. See [Setup](#setup) below for the full
 local app with the batch converter.
 
-A local web app that converts NAM **A2** captures to NAM **A1** `.nam` files for the
-**Valeton GP-50**, in batch, with live progress — plus a read-only device usage
-inspector (mocked for now). Built on the A2→A1 distillation engine in [`a2a1/`](a2a1/README.md).
+A companion app for the **Valeton GP-50** (and GP-5) built by reverse-engineering its
+MIDI SysEx protocol from scratch. It reads and writes the pedal live over **WebMIDI**
+— no vendor SDK, no drivers — plus batch-converts NAM **A2** captures to NAM **A1**
+`.nam` files, since the GP-50 only accepts A1.
+
+**What it does:**
+
+- **Preset Explorer** — reads every preset off the connected pedal; full signal chain
+  per preset, block chips color-coded by type.
+- **Live editing** — edit a preset's blocks, models, and parameters in the browser;
+  changes mirror straight to the pedal over WebMIDI.
+- **Model picker** — swap any block's model using Valeton's official hardware names,
+  not just internal IDs.
+- **Preset rename** — edit a preset's name and write it back to the device.
+- **Preset & block reordering** — drag to rearrange presets in a bank, or blocks
+  within a preset's signal chain; each reorder is one batched, minimal write.
+- **Clear Preset** — wipe a slot back to a factory-blank preset.
+- **Captures & IRs browser** — every SnapTone capture and User IR on the device,
+  plus reusable templates.
+- **Capture usage lookup** — pick a SnapTone or IR and see exactly which presets
+  reference it.
+- **Build a patch from a capture** — wrap a template's effects chain around a
+  SnapTone/IR and write the result to a slot.
+- **Make a template from a preset** — save any preset's effects chain as a reusable
+  template.
+- **Preset Converter** — convert `.prst` preset files between the GP-5 and GP-50
+  formats, entirely client-side.
+- **NAM A2→A1 batch converter** — drag-drop one or more `.nam` A2 captures, pick an
+  output format, and convert with live per-file progress (local app only, needs the
+  Python distillation engine — see below).
 
 > The GP-50 only accepts NAM A1. There's no A2→A1 format downgrade (different neural
-> architectures), so this **distills**: render a DI through the A2 model, then train an
-> A1 to reproduce it. See [`a2a1/README.md`](a2a1/README.md) for the engine details and
-> [`MVP_REQUIREMENTS.md`](MVP_REQUIREMENTS.md) for scope.
+> architectures), so conversion **distills**: render a DI through the A2 model, then
+> train an A1 to reproduce it. See [`a2a1/README.md`](a2a1/README.md) for the engine
+> details.
+
+Two ways to run it:
+- **Static/WebMIDI-only** (the live demo above) — Explorer, live editing, Captures &
+  IRs, and the Preset Converter all run fully client-side, no backend.
+- **Full local app** (Setup below) — adds the NAM batch converter, which needs the
+  Python distillation engine.
 
 ## Screenshots
 
@@ -52,9 +85,9 @@ Then open **http://127.0.0.1:8756**.
   GP-50, or **0.7.0** for newer devices) → set epochs (or hit **Fast (test)**) →
   **Convert**. Watch per-file progress (ESR + format check); download each result.
   Then import the `.nam` into Valeton Suite like any A1 capture.
-- **Device Inspector:** pick a SnapTone or IR to see which patches reference it.
-  **Currently mocked** (clearly banner-flagged) — it wires to real device data once the
-  GP-50 protocol RE is finished (see `a2a1/PRODUCT_IDEAS.md`).
+- **Preset Explorer / Captures & IRs:** connect the pedal over WebMIDI (Chrome/Edge,
+  HTTPS or localhost), scan, and browse/edit real device data live — see the
+  itemized feature list above.
 
 ## Tests
 
@@ -77,7 +110,7 @@ Then open **http://127.0.0.1:8756**.
 
 ## Scope
 
-MVP is **convert + read-only mocked device inspector**. Real device I/O (uploading to
-slots, replacing SnapTones/IRs across patches) is deferred — it needs the GP-50 write
-protocol + checksum, which are still being reverse-engineered. The app never touches the
-physical pedal.
+Live device read/write (Explorer, live edit, reorder, rename, clear, capture usage,
+build/make-template) is reverse-engineered and working over WebMIDI. The app only
+talks to the physical pedal when you explicitly connect and scan/write via the
+Explorer or Captures & IRs pages.

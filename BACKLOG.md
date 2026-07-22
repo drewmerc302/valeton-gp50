@@ -72,6 +72,34 @@ IDs are stable so we can burn down incrementally.
   own repo. Not now — just the placeholder. Repo/link target TBD; CONV-1's link
   points here once it exists.
 
+## GP-150 / GP-180 support
+
+Full research + roadmap: **`design/GP150_GP180_SUPPORT.md`** — read that first; the
+catalog, container findings and dead ends are already established, don't re-derive.
+Origin: a Reddit commenter asked whether GP-150/180 tones could be supported later.
+
+- [ ] **GP150-1** — Collect samples (blocks everything else). Need ≥20 GP-150 presets,
+  **≥1 pair differing only by a chain reorder** (settles the `0x78` module-order
+  hypothesis), ≥3 GP-180 presets (confirms GP-180 shares GP-150's container), and one
+  preset with a 15-16 char name (pins the name field width). No hardware needed.
+- [ ] **GP150-2** — Map the GP-150 container: diff-cluster the corpus, crack the
+  checksum (offset/range/algo — do NOT assume GP-5/GP-50's CRC-8/0x07 at 0x14),
+  confirm the `0x78` order array, map the param block against `module150_data.json`.
+  Deliverable: `re/DEVICE_GP150.md` + a byte-for-byte round-tripping decoder.
+- [ ] **GP150-3** — Refactor `patch/prst_format.py` **before** adding GP-150:
+  `NAME_OFF`/`BODY_OFF` are module-level constants and `DeviceProfile` assumes a fixed
+  20-byte magic header — GP-150 has its name at 0x2C and no magic, so it cannot be
+  expressed today. Move the offsets into `DeviceProfile`, keep GP-50 the default,
+  re-verify GP-5/GP-50 round-trips.
+- [ ] **GP150-4** — `build_ring.py gp150` → `fxid_ring_gp150.json` from
+  `module150_data.json` (extract from the user's own install; never redistribute).
+- [ ] **GP150-5** — Read path: find GP-150/180 USB PID + MIDI port name, verify the
+  `0x40`/`0x41` selectors behave as on GP-5/GP-50. Needs hardware or a capture.
+- [ ] **GP150-6** — Write path: gated from day one (`WRITE_VERIFIED["gp150"]=False`),
+  capture → build → byte-for-byte validate → only then send. Same discipline as GP-5.
+- [ ] **GP150-7** — UI/product surface: device badge, converter matrix. GP-150↔GP-50
+  is a real transcode across different containers, not a reshape — scope separately.
+
 ## Carried over (prior sessions / surfaced during RE)
 
 - [ ] **PLAT-1** — Hosting decision (parked in DEPLOY.md). Leaning: private repo +

@@ -325,7 +325,16 @@
     (async () => {
       try {
         const names = await Bridge.readNames();
-        scanState.total = names.length || 100;
+        // A MIDI request that gets no reply resolves as an empty blob rather than
+        // throwing (see webmidi_device.js's exchange()) — that used to fall
+        // through as "0 written, 0 errors", which the caller then also treated
+        // as a generic per-slot failure. Surface the real cause: the pedal never
+        // answered the catalog request at all (a different app has the port, the
+        // cable's out, or the port went stale) — no slot was even attempted.
+        if (!names.length) {
+          throw new Error("no reply from the pedal — close Valeton Suite if it's open, and check the USB cable");
+        }
+        scanState.total = names.length;
         for (const { slot, name } of names) {
           scanState.current = `#${slot} ${name}`;
           // An explicit scan always re-reads every slot from the pedal — no

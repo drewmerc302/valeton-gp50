@@ -18,7 +18,10 @@
 
   const PRST = root.PRST, PatchLib = root.PatchLib, Bridge = root.DeviceBridge;
   const realFetch = root.fetch.bind(root);
-  const LS_LIB = "valeton_blocklib", LS_TPL = "valeton_templates", LS_SCAN = "valeton_scanCache", LS_BANKMAP = "valeton_bankMap";
+  // _v2: the v1 key briefly cached scan results that a since-removed "resume"
+  // path could replay instead of re-reading the pedal — bump so any bad data
+  // written during that window is ignored, not silently trusted.
+  const LS_LIB = "valeton_blocklib", LS_TPL = "valeton_templates", LS_SCAN = "valeton_scanCache_v2", LS_BANKMAP = "valeton_bankMap";
 
   // Resolve the data dir relative to THIS script's URL, so the shim works whether
   // it's served at /static/static_api.js (backend) or ./static_api.js (a static
@@ -56,11 +59,6 @@
     cache.slots[slot] = { b64: bytesToB64(prst), name: store.names.get(slot) || "", ts: Date.now() };
     lsSet(LS_SCAN, cache);
   }
-  // slots read within the last few minutes are treated as part of a scan the user
-  // is actively resuming (e.g. after an accidental reload) — safe to skip
-  // re-reading from the pedal. Older entries are just "last known" data; an
-  // explicit rescan always re-reads them in case the preset changed on the device.
-  const RESUME_WINDOW_MS = 5 * 60 * 1000;
 
   // --- data store (bundled snapshot) -----------------------------------------
   let store = null; // { profile, lib, bytes: Map(slot->Uint8Array), names: Map, snapshotName: Map }
@@ -324,28 +322,21 @@
     if (scanState.running) return J({ ok: true });
     if (!(await ensureConnected())) return J({ ok: false, error: "no device connected" });
     scanState = { running: true, done: 0, total: 100, current: "", errors: 0, written: 0, error: null };
-    const cache = lsGet(LS_SCAN, null);
-    const resumable = cache && cache.profileKey === store.profile.key ? cache.slots || {} : {};
     (async () => {
       try {
         const names = await Bridge.readNames();
         scanState.total = names.length || 100;
         for (const { slot, name } of names) {
           scanState.current = `#${slot} ${name}`;
-          const cached = resumable[slot];
-          if (cached && Date.now() - cached.ts < RESUME_WINDOW_MS) {
-            // already read this slot moments ago (e.g. an interrupted scan we're
-            // resuming) — reuse it instead of hitting the pedal again.
-            try { store.bytes.set(slot, b64ToBytes(cached.b64)); store.names.set(slot, cached.name || name); scanState.written++; }
-            catch { scanState.errors++; }
-          } else {
-            try {
-              const prst = await Bridge.readSlotPrst(slot);
-              store.bytes.set(slot, prst); store.names.set(slot, PRST.readName(prst) || name);
-              scanState.written++;
-              persistSlot(slot);
-            } catch { scanState.errors++; }
-          }
+          // An explicit scan always re-reads every slot from the pedal — no
+          // skipping via the local cache. A skip-if-cached "resume" here risked
+          // replaying stale/bad data instead of ever touching the device again.
+          try {
+            const prst = await Bridge.readSlotPrst(slot);
+            store.bytes.set(slot, prst); store.names.set(slot, PRST.readName(prst) || name);
+            scanState.written++;
+            persistSlot(slot);
+          } catch { scanState.errors++; }
           scanState.done++;
         }
         invalidate();

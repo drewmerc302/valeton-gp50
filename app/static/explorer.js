@@ -1380,12 +1380,20 @@
         : `Snapshot ${st.done}/${st.total}${st.current ? ` — ${st.current}` : ""}${st.errors ? ` (${st.errors} skipped)` : ""}`;
       if (!st.running) {
         if (st.error) return false;
+        // Every slot can individually fail (device unplugged mid-scan, tab lost
+        // the MIDI port, etc.) without the scan itself throwing — don't treat
+        // that as success, or the reorder snapshot would silently be the blank
+        // bundle instead of the pedal's real presets.
+        if (!st.written) {
+          $("scan-status").textContent = `Snapshot failed — every slot read failed (${st.errors} errors). Check the USB connection and try again.`;
+          return false;
+        }
         localStorage.setItem(LAST_SCAN_KEY, String(Date.now()));
         bankScanned = true;
         await loadInventory();
         updateDeviceHeader();
         render();
-        $("scan-status").textContent = `✓ Snapshot ready (${st.written || st.done} presets).`;
+        $("scan-status").textContent = `✓ Snapshot ready (${st.written} presets${st.errors ? `, ${st.errors} failed` : ""}).`;
         setTimeout(() => { $("scan-progress").hidden = true; }, 2000);
         return true;
       }
@@ -1880,8 +1888,16 @@
         ? `Scan failed: ${st.error}`
         : `Scanning ${st.done}/${st.total}${st.current ? ` — ${st.current}` : ""}${st.errors ? ` (${st.errors} skipped)` : ""}`;
       if (!st.running) {
-        if (!st.error) {
-          status.textContent = `Scanned ${st.written || st.done} presets${st.errors ? `, ${st.errors} skipped` : ""}. Loading…`;
+        // Every slot can individually fail (device unplugged mid-scan, tab lost
+        // the MIDI port, etc.) without the scan itself throwing (st.error unset)
+        // — that used to fall through as if it succeeded, showing the blank
+        // bundle while claiming "Scanned 100 presets".
+        if (st.error) {
+          // status already set above from the polling branch
+        } else if (!st.written) {
+          status.textContent = `Scan failed — every slot read failed (${st.errors} errors). Check the USB connection and try again.`;
+        } else {
+          status.textContent = `Scanned ${st.written} preset${st.written === 1 ? "" : "s"}${st.errors ? `, ${st.errors} failed` : ""}. Loading…`;
           localStorage.setItem(LAST_SCAN_KEY, String(Date.now()));
           bankScanned = true;
           await loadInventory();

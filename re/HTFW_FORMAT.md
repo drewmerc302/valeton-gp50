@@ -102,6 +102,67 @@ stays closed. See `re/DEVICE_WRITE.md` — GP-50's `0x1D` was originally cracked
 MIDI capture precisely *because* static analysis of the Dart AOT app failed. Capture
 remains the only route that has ever worked here.
 
+## The audio DSP core — Cortex-M4F class, and what it rules out
+
+Regions `c` + `g` are the audio subsystem, not merely "ARM Thumb". Confirmed by
+content, not inference: `g` holds 1/sqrt(2) x23 (Butterworth Q), 44100.0 x9, pi/2pi
+— biquad design constants — plus 17,155 single-precision VFP instructions; `c`
+contains the string `User IR`; and `f` (cab/IR data) loads immediately after `g`.
+
+Core identity, from literal-pool constants (Thumb-2 cannot inline a 32-bit
+peripheral address, so every System Control Space access leaves the raw address in
+the binary as an LE u32):
+
+| evidence | value | implies |
+|---|---|---|
+| vector table @0x400 in `c` | SP=0x20005ae8, reset=0x00004c2d (odd) | textbook Cortex-M |
+| SCS literals present | ICSR, VTOR, AIRCR x4, DHCSR | Cortex-M confirmed |
+| cache maintenance regs 0xE000EF50–EF74 | **absent** | **not M7** |
+| TCM / CACR regs 0xE000EF90–EF9C | **absent** | **not M7** |
+| VFP precision, `c`+`g` | single=18,722, double=**0** | SP-only FPU |
+| DSP multiply ext (0xFBxx first halfword) | 3.34/KB in `c` | M4/M7 class |
+
+**Cortex-M4F class** — single-precision FPU, DSP extension, no cache, no TCM.
+Clock is NOT recoverable from the image: no PLL/clock literals survive. (Beware
+false positives here — 0x47700000 and 0x2000xxxx "peripheral/SRAM" clusters are
+just `bx lr` and instruction bytes landing on u32 alignment. Discard them.)
+
+### Why this closes the native-NAM question
+
+Model sizes, measured from `refs/`:
+
+| model | weights | f32 |
+|---|---|---|
+| A1-Standard (`wavenet_a1_standard.nam`) | 13,802 | 53.9 KB |
+| A2-Full (submodel max_value=1.0, ch=8) | 12,146 | 47.4 KB |
+| A2-Lite (submodel max_value=0.5, ch=3) | 1,871 | 7.3 KB |
+| **SnapTone payload (what the pedal runs)** | — | **~2,755 B** |
+
+Both A2 submodels are 23 dilated layers with a 6,331-sample receptive field
+(132 ms @48k), matching the published A2 spec.
+
+The GP-50 has **never** run a neural amp model. Per `re/REFIT_FINDINGS.md`, Valeton
+Suite runs genuine NAM inference on the *desktop* and `startClone` fits a compact
+block model (static nonlinearity + IR convolver, ~16-wide, byte-quantized). Valeton
+wrote a 32.5 KB fitting routine specifically to avoid running a 13,802-weight
+WaveNet on this DSP — the existence of SnapTone is the evidence the silicon can't.
+
+A2-Lite is smaller in weights but still ~4–6k MAC/sample over 23 dilated conv
+layers ≈ 200–290 MMAC/s at 48 kHz. The published A2-Lite figure ("50% CPU on a
+Cortex-M7 @600 MHz") is consistent with that. An M4F with no cache and no TCM would
+need roughly 450–900 MHz to match; M4F parts top out near 180–300 MHz.
+
+**Native A2-Lite on the GP-50 is out of reach — not marginal, a full tier short.**
+
+Corollary for the `a2a1/` pipeline: it does not depend on pedal silicon at all. It
+emits A1 `.nam` for **Valeton Suite** to refit; the pedal never sees NAM. Its real
+dependency is the Suite's converter accepting A1 0.5.x. Suite-side A2 support is
+therefore cheap for Valeton (bump the statically-linked NeuralAmpModelerCore to
+0.13+, re-run the same refit) — that, not pedal firmware, is what would obsolete the
+pipeline.
+
+Probe: `re/probes/arm_core_id.py <region.bin>...`
+
 ## Caveat on opcode searching
 
 Searching a 1.2MB region for 2-byte markers (`11 4F`, `11 43`, ...) is **statistical

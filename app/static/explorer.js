@@ -1341,7 +1341,8 @@
           <p class="modal-msg" style="margin:0 0 1.2rem">
             Preset reordering is fully supported. First we take a clean snapshot of all
             100 presets so every one moves with its current settings. It reads one preset
-            at a time and takes about 90 seconds.
+            at a time and takes about 90 seconds. Don't refresh or close this tab during
+            the snapshot, or you'll lose progress and have to start over.
           </p>
           <div class="modal-actions" style="justify-content:flex-end;gap:.6rem">
             <button type="button" class="modal-btn" data-c="cancel">Cancel</button>
@@ -1901,7 +1902,7 @@
   const scanButtons = () => [$("scan-btn"), $("scan-btn-hero")].filter(Boolean);
 
   async function startScan() {
-    if (!(await UI.confirmDialog("Begin scan of all 100 presets?\n\nPlease ensure your device is connected to your computer via USB cable.", "Begin scan"))) return;
+    if (!(await UI.confirmDialog("Begin scan of all 100 presets?\n\nPlease ensure your device is connected to your computer via USB cable. This takes about 90 seconds — don't refresh or close this tab, or you'll lose progress and have to start over.", "Begin scan"))) return;
     scanButtons().forEach((b) => (b.disabled = true));
     $("scan-progress").hidden = false;
     $("scan-fill").style.width = "0%";
@@ -1929,6 +1930,12 @@
     await loadModelsAndLib();
     buildFilterBar();
     renderSaved();
+    // A prior visit's real device scan survives reloads (static_api's scan cache) —
+    // if every slot came from that cache rather than the blank bundle, treat this
+    // load as an already-scanned bank so reorder/etc. don't demand a rescan.
+    if (window.__staticApi && window.__staticApi.hasFullScanCache && window.__staticApi.hasFullScanCache()) {
+      bankScanned = true;
+    }
     updateDeviceHeader();
     render();
     wireInlineReorder(); // grip-drag reordering on the main list

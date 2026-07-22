@@ -51,6 +51,16 @@
     items.forEach((it) => el.appendChild(assetCard(kind, it)));
   }
 
+  // Same filled colored pill used for a preset's block chips in Preset Explorer
+  // (chip + blk-<code> sets --c, which .chip-row's CSS fills as the background) —
+  // keeps the two pages visually consistent.
+  function blockChip(b) {
+    const c = document.createElement("span");
+    c.className = `chip blk-${(b.block || "").replace(/[^a-z]/gi, "").toLowerCase()}`;
+    c.textContent = b.model || b.block;
+    return c;
+  }
+
   function renderTemplates() {
     const list = $("tmpl-list");
     const empty = $("tmpl-empty");
@@ -59,10 +69,17 @@
     if (!DC.state.templates.length) { empty.hidden = false; return; }
     empty.hidden = true;
     DC.state.templates.forEach((t) => {
-      const chain = ((t.summary && t.summary.chain) || []).map((b) => b.model || b.block).join(" · ");
+      const chain = (t.summary && t.summary.chain) || [];
       const li = document.createElement("li");
       li.className = "tmpl-row";
-      li.innerHTML = `<span class="tr-name">${t.name}</span><span class="tr-chain">${chain || "(no active blocks)"}</span>`;
+      const nameEl = document.createElement("span");
+      nameEl.className = "tr-name";
+      nameEl.textContent = t.name;
+      const chainEl = document.createElement("span");
+      chainEl.className = "tr-chain chip-row";
+      if (chain.length) chain.forEach((b) => chainEl.appendChild(blockChip(b)));
+      else chainEl.textContent = "(no active blocks)";
+      li.append(nameEl, chainEl);
       const del = document.createElement("button");
       del.type = "button"; del.className = "tr-del"; del.title = "Delete template"; del.textContent = "✕";
       del.addEventListener("click", async () => {

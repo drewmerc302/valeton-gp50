@@ -1274,7 +1274,10 @@ input[type="range"]::-moz-range-thumb {
   border: 1px solid var(--border); border-radius: 9px; background: var(--card-bg);
 }
 .tmpl-row .tr-name { font-weight: 700; }
-.tmpl-row .tr-chain { color: var(--muted); font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* block chips reuse Preset Explorer's filled-pill look (.chip-row .chip, blk-*
+   coloring) instead of a plain "·"-joined string, for visual consistency. */
+.tmpl-row .tr-chain.chip-row { justify-content: flex-start; flex: 1 1 auto; min-width: 0; }
+.tmpl-row .tr-chain .chip { cursor: default; pointer-events: none; }
 .tmpl-row .tr-del { margin-left: auto; border: none; background: none; color: var(--muted); cursor: pointer; font-size: 0.9rem; }
 .tmpl-row .tr-del:hover { color: var(--fail); }
 .tmpl-empty { color: var(--muted); font-size: 0.86rem; }

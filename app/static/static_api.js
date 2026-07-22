@@ -18,7 +18,7 @@
 
   const PRST = root.PRST, PatchLib = root.PatchLib, Bridge = root.DeviceBridge;
   const realFetch = root.fetch.bind(root);
-  const LS_LIB = "valeton_blocklib", LS_TPL = "valeton_templates";
+  const LS_LIB = "valeton_blocklib", LS_TPL = "valeton_templates", LS_SCAN = "valeton_scanCache", LS_BANKMAP = "valeton_bankMap";
 
   // Resolve the data dir relative to THIS script's URL, so the shim works whether
   // it's served at /static/static_api.js (backend) or ./static_api.js (a static
@@ -41,6 +41,27 @@
   const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
   const lsSet = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 
+  // --- scan cache (persists real device reads across reloads/tab closes) -----
+  // Every slot read straight off the pedal (scan, live select, or a write we just
+  // made) gets written here so a refresh never throws away real preset data —
+  // only the still-unscanned slots keep showing the blank bundle. Keyed by device
+  // profile so a GP-5 cache never bleeds into a GP-50 session or vice versa.
+  function persistSlot(slot) {
+    if (!store) return;
+    const prst = store.bytes.get(slot);
+    if (!prst) return;
+    const cache = lsGet(LS_SCAN, {});
+    if (cache.profileKey !== store.profile.key) { cache.profileKey = store.profile.key; cache.slots = {}; }
+    cache.slots = cache.slots || {};
+    cache.slots[slot] = { b64: bytesToB64(prst), name: store.names.get(slot) || "", ts: Date.now() };
+    lsSet(LS_SCAN, cache);
+  }
+  // slots read within the last few minutes are treated as part of a scan the user
+  // is actively resuming (e.g. after an accidental reload) — safe to skip
+  // re-reading from the pedal. Older entries are just "last known" data; an
+  // explicit rescan always re-reads them in case the preset changed on the device.
+  const RESUME_WINDOW_MS = 5 * 60 * 1000;
+
   // --- data store (bundled snapshot) -----------------------------------------
   let store = null; // { profile, lib, bytes: Map(slot->Uint8Array), names: Map, snapshotName: Map }
   let invCache = null;
@@ -53,10 +74,26 @@
       const snap = await realFetch(dataUrl("presets.json")).then((r) => r.json());
       const profile = PRST.profileFor(snap.device || "gp50");
       const ring = await realFetch(dataUrl(profile.ringFile)).then((r) => r.json());
-      const bankMap = await realFetch(dataUrl("bank_map.json")).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
+      let bankMap = await realFetch(dataUrl("bank_map.json")).then((r) => r.ok ? r.json() : {}).catch(() => ({}));
+      // A prior "Sync SnapTones and IRs from device" only ever lived in memory —
+      // same reload-loses-it bug as the preset scan. Restore it here so real IR/
+      // SnapTone names survive a refresh instead of falling back to "User IR N".
+      const savedBankMap = lsGet(LS_BANKMAP, null);
+      if (savedBankMap && savedBankMap.profileKey === profile.key && savedBankMap.bankMap) bankMap = savedBankMap.bankMap;
       const bytes = new Map(), names = new Map();
       for (const p of snap.presets) { bytes.set(p.slot, b64ToBytes(p.b64)); names.set(p.slot, p.name); }
-      store = { profile, ring, bankMap, lib: PatchLib.make(ring, bankMap, profile), bytes, names };
+      // Overlay any real device reads we've cached locally, so a reload shows the
+      // user's actual presets instead of the blank bundle for every slot already
+      // scanned in a prior visit.
+      const cache = lsGet(LS_SCAN, null);
+      let cachedCount = 0;
+      if (cache && cache.profileKey === profile.key && cache.slots) {
+        for (const [slotStr, entry] of Object.entries(cache.slots)) {
+          try { bytes.set(Number(slotStr), b64ToBytes(entry.b64)); names.set(Number(slotStr), entry.name); cachedCount++; }
+          catch { /* corrupt cache entry — skip it, keep the bundle default */ }
+        }
+      }
+      store = { profile, ring, bankMap, lib: PatchLib.make(ring, bankMap, profile), bytes, names, cachedCount };
       return store;
     })();
     return loading;
@@ -119,6 +156,7 @@
         await Bridge.selectSlot(body.slot);
         const live = await Bridge.readSlotPrst(body.slot); // pull live state into cache
         store.bytes.set(body.slot, live); invalidate();
+        persistSlot(body.slot);
         return J({ ok: true, cache_updated: true });
       } catch (e) { return J({ ok: false, error: e.message }); }
     }
@@ -196,6 +234,7 @@
     try {
       const r = await Bridge.writeSlot(body.target_slot, prst);
       store.bytes.set(body.target_slot, prst); store.names.set(body.target_slot, PRST.readName(prst)); invalidate();
+      persistSlot(body.target_slot);
       return J({ ok: true, acks: r.acks, packets: r.sent, verified_name: PRST.readName(prst) });
     } catch (e) { return J({ ok: false, error: e.message }); }
   }
@@ -215,6 +254,7 @@
     try {
       const r = await Bridge.writeSlot(target, prst);
       store.bytes.set(target, prst); store.names.set(target, PRST.readName(prst)); invalidate();
+      persistSlot(target);
       return J({ ok: true, acks: r.acks, packets: r.sent, verified_name: PRST.readName(prst) });
     } catch (e) { return J({ ok: false, error: e.message }); }
   }
@@ -230,6 +270,7 @@
       store.bytes.set(z, ba); store.bytes.set(a, bz);
       const na = store.names.get(a), nz = store.names.get(z);
       store.names.set(a, nz); store.names.set(z, na); invalidate();
+      persistSlot(a); persistSlot(z);
       return J({ ok: true });
     } catch (e) { return J({ ok: false, error: e.message }); }
   }
@@ -272,6 +313,7 @@
       store.bankMap = { source: "live device read (WebMIDI selectors 0x24 + 0x20)", snaptone, ir };
       store.lib = PatchLib.make(store.ring, store.bankMap, store.profile); // refresh names
       invalidate();
+      lsSet(LS_BANKMAP, { profileKey: store.profile.key, bankMap: store.bankMap });
       return J({ ok: true, count: Object.keys(snaptone).length, ir_count: Object.keys(ir).length, snaptones: snaptone, irs: ir });
     } catch (e) { return J({ ok: false, error: e.message }); }
   }
@@ -282,17 +324,28 @@
     if (scanState.running) return J({ ok: true });
     if (!(await ensureConnected())) return J({ ok: false, error: "no device connected" });
     scanState = { running: true, done: 0, total: 100, current: "", errors: 0, written: 0, error: null };
+    const cache = lsGet(LS_SCAN, null);
+    const resumable = cache && cache.profileKey === store.profile.key ? cache.slots || {} : {};
     (async () => {
       try {
         const names = await Bridge.readNames();
         scanState.total = names.length || 100;
         for (const { slot, name } of names) {
           scanState.current = `#${slot} ${name}`;
-          try {
-            const prst = await Bridge.readSlotPrst(slot);
-            store.bytes.set(slot, prst); store.names.set(slot, PRST.readName(prst) || name);
-            scanState.written++;
-          } catch { scanState.errors++; }
+          const cached = resumable[slot];
+          if (cached && Date.now() - cached.ts < RESUME_WINDOW_MS) {
+            // already read this slot moments ago (e.g. an interrupted scan we're
+            // resuming) — reuse it instead of hitting the pedal again.
+            try { store.bytes.set(slot, b64ToBytes(cached.b64)); store.names.set(slot, cached.name || name); scanState.written++; }
+            catch { scanState.errors++; }
+          } else {
+            try {
+              const prst = await Bridge.readSlotPrst(slot);
+              store.bytes.set(slot, prst); store.names.set(slot, PRST.readName(prst) || name);
+              scanState.written++;
+              persistSlot(slot);
+            } catch { scanState.errors++; }
+          }
           scanState.done++;
         }
         invalidate();
@@ -300,6 +353,13 @@
       finally { scanState.running = false; }
     })();
     return J({ ok: true });
+  }
+  // true once every slot has real device data cached locally (not just the blank
+  // bundle) — used to decide whether a reload can skip the "Please connect USB and
+  // scan" empty state entirely.
+  function hasFullScanCache() {
+    const cache = lsGet(LS_SCAN, null);
+    return !!(cache && store && cache.profileKey === store.profile.key && cache.slots && Object.keys(cache.slots).length >= 100);
   }
 
   // --- install the interceptor ------------------------------------------------
@@ -321,6 +381,7 @@
     if (!store) return;
     const u = prst instanceof Uint8Array ? prst : Uint8Array.from(prst);
     store.bytes.set(slot, u); store.names.set(slot, PRST.readName(u)); invalidate();
+    persistSlot(slot);
   }
 
   // Every slot's current .prst bytes (fresh copies), keyed by slot. The Explorer's
@@ -332,6 +393,6 @@
     return out;
   }
 
-  root.__staticApi = { handle, ensureLoaded, setSlotBytes, getAllSlotBytes }; // for tests + Explorer cache sync
+  root.__staticApi = { handle, ensureLoaded, setSlotBytes, getAllSlotBytes, hasFullScanCache }; // for tests + Explorer cache sync
   console.log("[static_api] active — /api/device/* served client-side");
 })(typeof self !== "undefined" ? self : this);

@@ -1,6 +1,7 @@
 # Device Inspector redesign — morning summary (overnight build)
 
-Built while you were away. Everything below is committed on `mvp-converter`, tested,
+Built while you were away. Everything below is committed on `mvp-converter` (since
+fast-forward merged into `master` and deleted), tested,
 and hardware-verified on your connected pedal. Server is running on :8765.
 
 ## What to look at first (they're live — just click)

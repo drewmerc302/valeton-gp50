@@ -97,7 +97,7 @@ slot to test the build-from-capture → write path end-to-end.
   can reclaim them.
 
 ## Execution notes
-- Branch `mvp-converter` only. Commit incrementally (Write msg to /tmp/msg.txt →
+- Work on a task branch cut from `master`. Commit incrementally (Write msg to /tmp/msg.txt →
   `git commit -F`). Server: uvicorn app.main:app --port 8765 (restart on py change;
   static is no-cache). Verify: node --check JS, py ast parse, curl via python urllib
   (RTK corrupts curl). Browser screenshots fail extension-side — don't block on them.

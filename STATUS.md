@@ -1,10 +1,10 @@
 # STATUS — GP-50 Converter MVP
-updated: 2026-07-13 tick-8 | branch: mvp-converter | phase: DONE | acceptance: 7/7 ✅ MVP COMPLETE
+updated: 2026-07-13 tick-8 | branch: master | phase: DONE | acceptance: 7/7 ✅ MVP COMPLETE
 
-## MVP COMPLETE — all 7 acceptance criteria met, committed to branch mvp-converter.
+## MVP COMPLETE — all 7 acceptance criteria met, merged to `master`.
 - T6 DONE: README.md (setup + usage + scope); run.sh verified launching (/health,/,/device,/api all 200); final fast sweep 31 green. → Acceptance #7 MET.
 - Handoff: screenshots sent to Drew, push notification sent, loop stopped.
-- Remaining work is all post-MVP / hardware-gated (see below). Merge mvp-converter → master when Drew approves.
+- Remaining work is all post-MVP / hardware-gated (see below). `mvp-converter` was fast-forward merged into `master` on 2026-07-22 and deleted; `master` is now the only branch and Vercel's production branch.
 
 ## Backlog (DAG)
 - [x] T0  scaffold FastAPI app, .venv-app, pytest harness, run.sh        [done]

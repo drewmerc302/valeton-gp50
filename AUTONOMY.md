@@ -24,7 +24,7 @@ it every iteration.
 4. **Verify:** spawn Tester → run the suite + a targeted check for this task → capture
    evidence. No evidence ⇒ treat as failed.
 5. **Review:** spawn Reviewer on the diff → must pass (correctness + no scope creep) before merge.
-6. **Integrate:** on green, commit to `mvp-converter` with a clear message + evidence
+6. **Integrate:** on green, commit to the run's task branch with a clear message + evidence
    summary; update `STATUS.md` (task→done, notes, next). On red, file a fix task; loop.
 7. **Decide:** if all acceptance criteria pass → **stop, push Drew a "MVP ready" summary
    with screenshots**. If hard-blocked → **stop, push the blocker + question**. Else
@@ -33,8 +33,9 @@ it every iteration.
 ## Guardrails (NON-NEGOTIABLE)
 - **Never** send MIDI to / read / write the physical pedal. No device I/O whatsoever.
   Device features stay mocked. If a task implies real hardware, mark it blocked-on-Drew.
-- Work only on branch `mvp-converter`. Commit only on green (tests + review). **Never**
-  force-push, reset, or touch `master`.
+- Work only on a dedicated task branch cut from `master` at the start of the run.
+  Commit only on green (tests + review). **Never** commit directly to, force-push,
+  or reset `master`.
 - Every iteration emits test evidence. Claims without run output are rejected.
 - **3-strikes:** if one task fails 3 iterations, stop and push Drew the problem + options.
 - Stay in MVP scope (`MVP_REQUIREMENTS.md`). No gold-plating. Defer nice-to-haves to a list.
@@ -48,7 +49,7 @@ answer a blocker). If he's silent, keep going under these rules.
 ## STATUS.md format
 ```
 # STATUS — GP-50 Converter MVP
-updated: <when> | branch: mvp-converter | phase: <n> | acceptance: X/7
+updated: <when> | branch: <task-branch> | phase: <n> | acceptance: X/7
 
 ## Now / next
 - <one line: what this tick did, what's next>
@@ -72,4 +73,4 @@ updated: <when> | branch: mvp-converter | phase: <n> | acceptance: X/7
 > increment (implement → test-with-evidence → adversarial review → commit-on-green → update
 > STATUS) using the specified worker agents/models; then either stop+notify (MVP done / hard
 > block / 3-strikes) or schedule the next tick. NEVER touch the physical pedal or send MIDI.
-> Work only on branch `mvp-converter`; never touch master.
+> Work only on a task branch cut from `master`; never commit directly to master.

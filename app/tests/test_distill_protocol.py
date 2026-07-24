@@ -70,6 +70,18 @@ def test_sibling_import_works_like_a_train_script():
     assert dp.format_ok(dp.parse_format(proc.stdout)) is True
 
 
+def test_progress_emit_parse_roundtrip():
+    with contextlib.redirect_stdout(io.StringIO()) as buf:
+        dp.emit_progress(3, 100)
+    assert dp.parse_progress(buf.getvalue()) == (3, 100)
+
+
+def test_parse_progress_returns_last_and_none():
+    stream = "DISTILL_PROGRESS: 1/10\nnoise\nDISTILL_PROGRESS: 7/10\n"
+    assert dp.parse_progress(stream) == (7, 10)
+    assert dp.parse_progress("no tokens here") is None
+
+
 def test_train_scripts_compile_and_reference_protocol():
     # torch venvs aren't importable here; at minimum the scripts must compile
     # and emit through the shared module, never raw token prints.

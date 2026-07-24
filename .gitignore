@@ -39,6 +39,9 @@ GP-5/
 GP-150 Presets/
 *.bin
 
+# local NAM A2 capture test data (not part of the repo)
+NAM_Files/
+
 # static site build output
 dist/
 /dist

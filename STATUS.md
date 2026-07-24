@@ -43,6 +43,6 @@ updated: 2026-07-13 tick-8 | branch: master | phase: DONE | acceptance: 7/7 ✅ 
 - 0.7.0-format WaveNet A1 input currently rejected as unsupported (could re-distill).
 
 ## Notes / decisions
-- Stack: FastAPI + vanilla web frontend, .venv-app. Engine reuses .venv (0.13.0) + .venv-a1 (0.12.2).
+- Stack: FastAPI + vanilla web frontend, .venv-app. Engine runs entirely in .venv (0.13.0); 0.5.x output via in-process transcode (a2a1/nam_transcode.py). The 0.12.2 venv (.venv-a1) is retired.
 - Screenshots: work/screenshots/{01-empty,02-progress,03-done,04-device}.png (gitignored artifacts).
 - Full-auto loop, notify Drew on MVP-done (with screenshots) / block.

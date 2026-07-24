@@ -77,7 +77,7 @@ def test_get_job_status_reaches_done():
     assert resp.status_code == 200
     body = resp.json()
     assert body["output_format"] == "0.5x"
-    assert body["epochs"] == 80
+    assert body["epochs"] == 60  # default when the form omits epochs
     assert len(body["files"]) == 1
     f = body["files"][0]
     assert f["name"] == "capture"

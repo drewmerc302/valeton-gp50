@@ -3,6 +3,11 @@
 Stage 2 of the A2->A1 pipeline: train a standard A1 WaveNet to match the rendered
 teacher audio, and export a 0.5.x-format .nam that the Valeton GP-50 accepts.
 
+DEPRECATED / LEGACY. The pipeline no longer uses this script or the 0.12.2 venv.
+Stage 2 now runs in the 0.13.0 venv via `train_a1_070.py --format 0.5x`, which trains
++ exports 0.7.0 and transcodes to 0.5.x in-process (see nam_transcode.py). Kept only as
+a reference for the native-0.5.x export path.
+
 RUN THIS WITH THE 0.12.2 VENV. Version matters: 0.13.0+ exports the 0.7.0 .nam
 format, which the GP-50 rejects. 0.12.2 natively exports 0.5.x.
 

@@ -27,6 +27,7 @@ import shutil
 from pathlib import Path
 
 import distill_protocol  # sibling module: the engine <-> train stdout contract
+import nam_transcode  # sibling module: pure-Python 0.7.0 -> 0.5.x .nam transcoder
 import numpy as np
 import soundfile as sf
 import torch
@@ -131,7 +132,13 @@ def validate_format(nam_path: Path) -> str:
     ver = d.get("version", "?")
     arch = d.get("architecture")
     layers = d.get("config", {}).get("layers", [])
+    layer0 = layers[0] if layers else {}
     last_layer = layers[-1] if layers else {}
+    if ver.startswith("0.5"):
+        # GP-50-compatible: flat head_size on each layer array.
+        ok = arch == "WaveNet" and "head_size" in layer0
+        tag = "OK (GP-50 compatible)" if ok else "!! UNEXPECTED FORMAT"
+        return f"version={ver} arch={arch} head_size={'head_size' in layer0} -> {tag}"
     has_head = isinstance(last_layer.get("head"), dict)
     ok = ver.startswith("0.7") and arch == "WaveNet" and has_head
     tag = "OK (0.7.0 export)" if ok else "!! UNEXPECTED FORMAT"
@@ -145,6 +152,14 @@ def main():
     ap.add_argument("outdir")
     ap.add_argument("--epochs", type=int, default=100)
     ap.add_argument("--arch", default="standard")
+    ap.add_argument(
+        "--format",
+        dest="fmt",
+        default="0.7.0",
+        choices=["0.7.0", "0.5x"],
+        help="output .nam format. '0.5x' transcodes the 0.7.0 export down for the "
+        "GP-50 (no retraining); '0.7.0' keeps the native export.",
+    )
     args = ap.parse_args()
 
     outdir = Path(args.outdir)
@@ -157,13 +172,42 @@ def main():
     dc = data_config(args.di, args.y, n_samples)
     lc = learning_config(args.epochs)
 
-    nam_full.main(dc, mc, lc, outdir, no_show=True, make_plots=False)
+    # Emit a machine-readable progress line per completed epoch so the engine can
+    # stream live training progress. nam.train.full builds its own callback list
+    # from a module-level helper; wrap that helper to append ours (main() resolves
+    # the name at call time, so patching the module attribute is enough).
+    import pytorch_lightning as pl
+    import nam.train.full as _nf
+
+    class _ProgressCallback(pl.Callback):
+        def on_train_epoch_end(self, trainer, pl_module):
+            distill_protocol.emit_progress(
+                int(trainer.current_epoch) + 1, int(trainer.max_epochs)
+            )
+
+    _orig_create_callbacks = _nf._create_callbacks
+
+    def _create_callbacks_with_progress(learning_config, *a, **k):
+        callbacks = _orig_create_callbacks(learning_config, *a, **k)
+        callbacks.append(_ProgressCallback())
+        return callbacks
+
+    _nf._create_callbacks = _create_callbacks_with_progress
+    try:
+        nam_full.main(dc, mc, lc, outdir, no_show=True, make_plots=False)
+    finally:
+        _nf._create_callbacks = _orig_create_callbacks
 
     exported = outdir / "model.nam"
     if not exported.exists():
         raise SystemExit(f"training did not produce {exported}")
 
     # Distillation quality: ESR of trained A1 vs teacher over the validation tail.
+    # Only run the student over the tail (plus a warm-up lead-in that exceeds the
+    # receptive field so its state is correct at `split`), not the whole DI. This
+    # turns a ~9M-sample forward pass into ~1.5M — the bulk of the per-convert
+    # fixed overhead, and the entire cost of a short/draft run.
+    WARMUP = 16384  # > standard WaveNet receptive field (~6.3k samples)
     val_len = min(1_500_000, n_samples // 5)
     split = n_samples - val_len
     x, _ = sf.read(args.di, dtype="float32", always_2d=False)
@@ -175,16 +219,21 @@ def main():
     with open(exported) as fp:
         student = init_from_nam(json.load(fp))
     student.eval()
+    start = max(0, split - WARMUP)
+    warm = split - start  # samples of lead-in to discard
+    x_eval = np.asarray(x[start:], np.float32)
     with torch.no_grad():
-        y_pred = (
-            student(torch.from_numpy(np.asarray(x, np.float32)), pad_start=True)
-            .cpu()
-            .numpy()
-        )
-    e = esr(y_pred[split:], yt[split:])
+        y_pred = student(torch.from_numpy(x_eval), pad_start=True).cpu().numpy()
+    e = esr(y_pred[warm:], yt[split:])
 
     final = outdir / "a1.nam"
-    shutil.copyfile(exported, final)
+    if args.fmt == "0.5x":
+        # Weights are identical across formats; this only reshapes the config so the
+        # GP-50's converter accepts it. ESR above (measured on the 0.7.0 model that
+        # actually ran) therefore holds for the transcoded file unchanged.
+        nam_transcode.transcode_file(str(exported), str(final))
+    else:
+        shutil.copyfile(exported, final)
     distill_protocol.emit_format(validate_format(final))
     distill_protocol.emit_esr(float(e))
     print(f"A1_NAM: {final}")

@@ -57,14 +57,14 @@ Two ways to run it:
 
 ## Setup
 
-Three Python venvs (the two engine venvs are pinned — see `a2a1/README.md` for why):
+Two Python venvs (the engine now runs entirely in one 0.13.0 venv — see
+`a2a1/README.md` for why the old second venv is gone):
 
 ```bash
 cd /Users/drewmerc/workspace/valeton
 
-# engine venvs
-python3 -m venv .venv     && ./.venv/bin/python     -m pip install -r a2a1/requirements-a2.txt   # NAM 0.13.0 (A2 render + 0.7.0 export)
-python3 -m venv .venv-a1  && ./.venv-a1/bin/python  -m pip install -r a2a1/requirements-a1.txt   # NAM 0.12.2 (0.5.x export for GP-50)
+# engine venv (A2 render + train + 0.7.0 export; 0.5.x via in-process transcode)
+python3 -m venv .venv     && ./.venv/bin/python     -m pip install -r a2a1/requirements-a2.txt   # NAM 0.13.0
 
 # web app venv
 python3 -m venv .venv-app && ./.venv-app/bin/python -m pip install fastapi "uvicorn[standard]" python-multipart pytest httpx

@@ -17,9 +17,12 @@ import re
 
 ESR_TOKEN = "DISTILL_ESR:"
 FORMAT_TOKEN = "FORMAT:"
+PROGRESS_TOKEN = "DISTILL_PROGRESS:"
 
 _ESR_RE = re.compile(re.escape(ESR_TOKEN) + r"\s*([0-9.eE+-]+)")
 _FORMAT_RE = re.compile(re.escape(FORMAT_TOKEN) + r"\s*(.+)")
+# "DISTILL_PROGRESS: <done>/<total>" — emitted once per completed train epoch.
+_PROGRESS_RE = re.compile(re.escape(PROGRESS_TOKEN) + r"\s*(\d+)\s*/\s*(\d+)")
 
 
 def emit_esr(esr: float) -> None:
@@ -28,6 +31,21 @@ def emit_esr(esr: float) -> None:
 
 def emit_format(verdict: str) -> None:
     print(f"{FORMAT_TOKEN} {verdict}")
+
+
+def emit_progress(done: int, total: int) -> None:
+    # flush=True so the engine, which streams stdout line by line, sees each
+    # epoch as it finishes rather than at process exit.
+    print(f"{PROGRESS_TOKEN} {done}/{total}", flush=True)
+
+
+def parse_progress(text: str):
+    """Return (done, total) from the LAST progress line seen, or None."""
+    matches = _PROGRESS_RE.findall(text or "")
+    if not matches:
+        return None
+    done, total = matches[-1]
+    return int(done), int(total)
 
 
 def parse_esr(text: str) -> float | None:

@@ -68,7 +68,7 @@ def _get_job_or_404(job_id: str) -> ConvertJob:
 @router.post("/jobs")
 async def create_job(
     files: List[UploadFile] = File(...),
-    epochs: int = Form(80),
+    epochs: int = Form(60),
     output_format: str = Form("0.5x"),
     di: str = Form("default"),
 ) -> dict:
@@ -137,6 +137,8 @@ def get_job(job_id: str) -> dict:
                 "name": s.name,
                 "status": s.status,
                 "progress": s.progress,
+                "detail": s.detail,
+                "eta_seconds": s.eta_seconds,
                 "esr": s.esr,
                 "format_ok": s.format_ok,
                 "error": s.error,
@@ -146,6 +148,19 @@ def get_job(job_id: str) -> dict:
             }
             for s in job.files
         ],
+    }
+
+
+@router.post("/jobs/{job_id}/cancel")
+def cancel_job(job_id: str) -> dict:
+    """Request cancellation: flags the job and kills any in-flight render/train
+    subprocess. Idempotent; safe to call on an already-finished job."""
+    job = _get_job_or_404(job_id)
+    job.request_cancel()
+    return {
+        "job_id": job_id,
+        "cancelled": True,
+        "files": [{"name": s.name, "status": s.status} for s in job.files],
     }
 
 

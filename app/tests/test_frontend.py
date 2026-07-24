@@ -25,10 +25,9 @@ def test_index_serves_html_with_key_hooks():
         assert hook in html, f"missing hook: {hook}"
 
 
-def test_convert_page_shows_preset_tool_and_nam_placeholder():
-    """CONV-1: the page is the GP-5<->GP-50 preset converter now — the NAM
-    (A2->A1) form is gone, replaced by a placeholder pointing at its future
-    standalone repo (CONV-2)."""
+def test_convert_page_shows_preset_tool_and_nam_converter():
+    """CONV-1: the page hosts both the GP-5<->GP-50 preset converter and the NAM
+    A2->A1 distiller (drop zone + live progress + cancel), driven by app.js."""
     html = client.get("/").text
     for hook in (
         'id="prst-drop"',
@@ -36,17 +35,27 @@ def test_convert_page_shows_preset_tool_and_nam_placeholder():
         'id="prst-convert-btn"',
         "convert_prst.js",
     ):
-        assert hook in html, f"missing convert hook: {hook}"
+        assert hook in html, f"missing preset-convert hook: {hook}"
     assert "Preset Converter" in html
-    assert "own repo" in html  # NAM placeholder copy
-    # the NAM conversion form itself is gone from this page
+    # the NAM A2->A1 form is present and wired to app.js
     for hook in (
         'id="drop-zone"',
         'id="file-input"',
-        'id="format-toggle"',
         'id="convert-btn"',
+        'id="cancel-btn"',
+        'id="epochs"',
+        'class="epoch-preset"',
+        'class="epoch-guide"',
+        "app.js",
     ):
-        assert hook not in html, f"stale NAM hook still present: {hook}"
+        assert hook in html, f"missing NAM-convert hook: {hook}"
+    # default epochs preset is Standard (60)
+    assert 'id="epochs" type="number" min="1" max="1000" value="60"' in html
+    # static-build fallback: a hidden download-link block app.js reveals when
+    # window.__VALETON_STATIC__ is set (no backend on the hosted site).
+    assert 'id="nam-converter"' in html
+    assert 'id="nam-download"' in html
+    assert "nam-a2a1-converter/releases" in html
 
 
 def test_static_app_js_served():

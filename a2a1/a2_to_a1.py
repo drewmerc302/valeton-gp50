@@ -7,11 +7,13 @@ Takes NAM A2 captures (SlimmableContainer / .nam) and produces standard A1 WaveN
 this by distillation: render a DI through the A2 model, then train an A1 model to
 reproduce it.
 
-    A2.nam --(render DI, 0.13.0)--> y.wav --(train+export, 0.12.2)--> A1.nam
+    A2.nam --(render DI, 0.13.0)--> y.wav
+           --(train+export 0.7.0, 0.13.0)--> --(transcode -> 0.5.x)--> A1.nam
 
 Then load the A1.nam in Valeton Suite exactly like any A1 capture.
 
-This driver only uses the standard library; it shells out to the two venvs.
+This driver only uses the standard library; it shells out to a single 0.13.0 venv
+(training exports 0.7.0, which train_a1_070.py transcodes down to 0.5.x in-process).
 
 Usage:
     python3 a2_to_a1.py INPUT [-o OUTDIR] [--di DI.wav] [--epochs 80]
@@ -54,7 +56,7 @@ def run(cmd, log_path):
     return p.returncode, p.stdout
 
 
-def convert_one(src, args, py_a2, py_a1):
+def convert_one(src, args, py_a2):
     name = src.stem
     work = Path(args.workdir) / name
     work.mkdir(parents=True, exist_ok=True)
@@ -91,8 +93,8 @@ def convert_one(src, args, py_a2, py_a1):
 
     rc, out = run(
         [
-            str(py_a1),
-            str(HERE / "train_a1.py"),
+            str(py_a2),
+            str(HERE / "train_a1_070.py"),
             str(args.di),
             str(y),
             str(work),
@@ -100,6 +102,8 @@ def convert_one(src, args, py_a2, py_a1):
             str(args.epochs),
             "--arch",
             args.arch,
+            "--format",
+            "0.5x",
         ],
         work / "train.log",
     )
@@ -169,17 +173,12 @@ def main():
     ap.add_argument("--arch", default="standard")
     ap.add_argument("--workdir", default=str(PROJECT / "work"))
     ap.add_argument("--venv-a2", default=str(PROJECT / ".venv" / "bin" / "python"))
-    ap.add_argument("--venv-a1", default=str(PROJECT / ".venv-a1" / "bin" / "python"))
     ap.add_argument("--keep-intermediate", action="store_true")
     args = ap.parse_args()
 
-    py_a2, py_a1 = Path(args.venv_a2), Path(args.venv_a1)
-    for p, label in (
-        (py_a2, "0.13.0 venv (--venv-a2)"),
-        (py_a1, "0.12.2 venv (--venv-a1)"),
-    ):
-        if not p.exists():
-            sys.exit(f"ERROR: {label} python not found at {p}")
+    py_a2 = Path(args.venv_a2)
+    if not py_a2.exists():
+        sys.exit(f"ERROR: 0.13.0 venv (--venv-a2) python not found at {py_a2}")
     if not Path(args.di).exists():
         sys.exit(
             f"ERROR: DI file not found at {args.di} (use --di, or make_di.py for a fallback)"
@@ -196,7 +195,7 @@ def main():
     for i, src in enumerate(files, 1):
         print(f"[{i}/{len(files)}] {src.name} ...", flush=True)
         t0 = time.time()
-        r = convert_one(src, args, py_a2, py_a1)
+        r = convert_one(src, args, py_a2)
         r["secs"] = round(time.time() - t0, 1)
         results.append(r)
         status = r["out"] or r["note"]

@@ -314,6 +314,18 @@
 
   async function cancelJob() {
     if (!jobInFlight || !currentJobId) return;
+
+    // Clear the staged input queue so the user must add fresh files before the
+    // next convert. A single file just clears; a batch confirms first so an
+    // accidental cancel doesn't wipe a long queue. (The cancelled result rows
+    // stay visible either way.)
+    let clearStaged = true;
+    if (selectedFiles.length > 1) {
+      clearStaged = window.confirm(
+        `Clear all ${selectedFiles.length} queued .nam files from the list?`
+      );
+    }
+
     if (cancelBtn) {
       cancelBtn.disabled = true;
       cancelBtn.textContent = "Cancelling…";
@@ -326,6 +338,12 @@
       showError(`Could not cancel: ${e.message}`);
     } finally {
       if (cancelBtn) cancelBtn.textContent = "Cancel";
+    }
+
+    if (clearStaged) {
+      selectedFiles = [];
+      renderFileList();
+      updateConvertEnabled(); // 0 files -> Convert disabled until new ones added
     }
   }
 

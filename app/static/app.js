@@ -3,6 +3,16 @@
 // GP-50 Converter frontend (T3). Talks only to the local /api/jobs endpoints
 // defined in app/api.py — no device I/O of any kind happens here.
 (() => {
+  // Static (no-backend) build: the converter needs a local training backend, so
+  // swap it for a link to the downloadable desktop app and wire nothing else.
+  if (window.__VALETON_STATIC__) {
+    const conv = document.getElementById("nam-converter");
+    const dl = document.getElementById("nam-download");
+    if (conv) conv.hidden = true;
+    if (dl) dl.hidden = false;
+    return;
+  }
+
   const dropZone = document.getElementById("drop-zone");
   const fileInput = document.getElementById("file-input");
   const filePickerBtn = document.getElementById("file-picker-btn");

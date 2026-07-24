@@ -51,6 +51,11 @@ def test_convert_page_shows_preset_tool_and_nam_converter():
         assert hook in html, f"missing NAM-convert hook: {hook}"
     # default epochs preset is Standard (60)
     assert 'id="epochs" type="number" min="1" max="1000" value="60"' in html
+    # static-build fallback: a hidden download-link block app.js reveals when
+    # window.__VALETON_STATIC__ is set (no backend on the hosted site).
+    assert 'id="nam-converter"' in html
+    assert 'id="nam-download"' in html
+    assert "valeton-a2a1-converter/releases" in html
 
 
 def test_static_app_js_served():

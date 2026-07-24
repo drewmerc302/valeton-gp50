@@ -203,6 +203,11 @@ def main():
         raise SystemExit(f"training did not produce {exported}")
 
     # Distillation quality: ESR of trained A1 vs teacher over the validation tail.
+    # Only run the student over the tail (plus a warm-up lead-in that exceeds the
+    # receptive field so its state is correct at `split`), not the whole DI. This
+    # turns a ~9M-sample forward pass into ~1.5M — the bulk of the per-convert
+    # fixed overhead, and the entire cost of a short/draft run.
+    WARMUP = 16384  # > standard WaveNet receptive field (~6.3k samples)
     val_len = min(1_500_000, n_samples // 5)
     split = n_samples - val_len
     x, _ = sf.read(args.di, dtype="float32", always_2d=False)
@@ -214,13 +219,12 @@ def main():
     with open(exported) as fp:
         student = init_from_nam(json.load(fp))
     student.eval()
+    start = max(0, split - WARMUP)
+    warm = split - start  # samples of lead-in to discard
+    x_eval = np.asarray(x[start:], np.float32)
     with torch.no_grad():
-        y_pred = (
-            student(torch.from_numpy(np.asarray(x, np.float32)), pad_start=True)
-            .cpu()
-            .numpy()
-        )
-    e = esr(y_pred[split:], yt[split:])
+        y_pred = student(torch.from_numpy(x_eval), pad_start=True).cpu().numpy()
+    e = esr(y_pred[warm:], yt[split:])
 
     final = outdir / "a1.nam"
     if args.fmt == "0.5x":

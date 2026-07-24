@@ -1409,3 +1409,21 @@ input[type="range"]::-moz-range-thumb {
   padding: 0.1rem 0.25rem; border: 1px dashed var(--border); border-radius: 8px;
   background: color-mix(in srgb, var(--muted) 8%, transparent);
 }
+
+/* ---- NAM A2->A1 epochs presets + guide ---- */
+.epochs-field label { display: block; margin-bottom: 0.4rem; font-weight: 600; }
+.epoch-preset {
+  padding: 0.3rem 0.7rem; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--chip); color: var(--text); cursor: pointer; font-size: 0.85rem;
+}
+.epoch-preset:hover { border-color: var(--accent); }
+.epoch-preset.active {
+  background: var(--accent); color: var(--accent-text); border-color: var(--accent);
+}
+.epoch-guide {
+  margin: 0.6rem 0 0.3rem; padding-left: 1.1rem; color: var(--muted);
+  font-size: 0.85rem; line-height: 1.5;
+}
+.epoch-guide b { color: var(--text); }
+.epoch-note { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.8rem; }
+.file-row-eta { color: var(--muted); font-variant-numeric: tabular-nums; }

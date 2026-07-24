@@ -172,7 +172,31 @@ def main():
     dc = data_config(args.di, args.y, n_samples)
     lc = learning_config(args.epochs)
 
-    nam_full.main(dc, mc, lc, outdir, no_show=True, make_plots=False)
+    # Emit a machine-readable progress line per completed epoch so the engine can
+    # stream live training progress. nam.train.full builds its own callback list
+    # from a module-level helper; wrap that helper to append ours (main() resolves
+    # the name at call time, so patching the module attribute is enough).
+    import pytorch_lightning as pl
+    import nam.train.full as _nf
+
+    class _ProgressCallback(pl.Callback):
+        def on_train_epoch_end(self, trainer, pl_module):
+            distill_protocol.emit_progress(
+                int(trainer.current_epoch) + 1, int(trainer.max_epochs)
+            )
+
+    _orig_create_callbacks = _nf._create_callbacks
+
+    def _create_callbacks_with_progress(learning_config, *a, **k):
+        callbacks = _orig_create_callbacks(learning_config, *a, **k)
+        callbacks.append(_ProgressCallback())
+        return callbacks
+
+    _nf._create_callbacks = _create_callbacks_with_progress
+    try:
+        nam_full.main(dc, mc, lc, outdir, no_show=True, make_plots=False)
+    finally:
+        _nf._create_callbacks = _orig_create_callbacks
 
     exported = outdir / "model.nam"
     if not exported.exists():

@@ -8,17 +8,22 @@
   const filePickerBtn = document.getElementById("file-picker-btn");
   const fileListEl = document.getElementById("file-list");
   const convertBtn = document.getElementById("convert-btn");
+  const cancelBtn = document.getElementById("cancel-btn");
   const epochsInput = document.getElementById("epochs");
   const errorBanner = document.getElementById("error-banner");
   const resultsSection = document.getElementById("results-section");
   const resultsEl = document.getElementById("results");
 
-  const DEFAULT_EPOCHS = 80;
+  const DEFAULT_EPOCHS = 60;
   const POLL_INTERVAL_MS = 1500;
+  const epochPresetBtns = Array.from(
+    document.querySelectorAll(".epoch-preset")
+  );
 
   let selectedFiles = [];
   let pollTimer = null;
   let jobInFlight = false;
+  let currentJobId = null;
 
   function showError(message) {
     errorBanner.textContent = message;
@@ -32,6 +37,10 @@
 
   function updateConvertEnabled() {
     convertBtn.disabled = selectedFiles.length === 0 || jobInFlight;
+    if (cancelBtn) {
+      cancelBtn.hidden = !jobInFlight;
+      cancelBtn.disabled = !jobInFlight;
+    }
   }
 
   function renderFileList() {
@@ -126,10 +135,24 @@
     training: "Training",
     done: "Done",
     failed: "Failed",
+    cancelled: "Cancelled",
   };
 
   function isTerminal(status) {
-    return status === "done" || status === "failed";
+    return (
+      status === "done" || status === "failed" || status === "cancelled"
+    );
+  }
+
+  function formatEta(seconds) {
+    if (seconds === null || seconds === undefined || !isFinite(seconds)) {
+      return null;
+    }
+    const s = Math.max(0, Math.round(seconds));
+    if (s < 60) return `~${s}s left`;
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem ? `~${m}m ${rem}s left` : `~${m}m left`;
   }
 
   function renderResults(job) {
@@ -149,7 +172,11 @@
 
       const statusEl = document.createElement("span");
       statusEl.className = "file-row-status";
-      statusEl.textContent = STATUS_LABELS[f.status] || f.status;
+      // Prefer the live detail ("Training 42/100") while running; fall back to
+      // the coarse status label.
+      const running = !isTerminal(f.status);
+      statusEl.textContent =
+        running && f.detail ? f.detail : STATUS_LABELS[f.status] || f.status;
 
       header.appendChild(nameEl);
       header.appendChild(statusEl);
@@ -163,6 +190,14 @@
 
       row.appendChild(header);
       row.appendChild(bar);
+
+      const eta = running ? formatEta(f.eta_seconds) : null;
+      if (eta) {
+        const etaEl = document.createElement("div");
+        etaEl.className = "file-row-meta file-row-eta";
+        etaEl.textContent = eta;
+        row.appendChild(etaEl);
+      }
 
       const metaParts = [];
       if (f.esr !== null && f.esr !== undefined) {
@@ -178,7 +213,7 @@
         row.appendChild(meta);
       }
 
-      if (f.status === "failed" && f.error) {
+      if ((f.status === "failed" || f.status === "cancelled") && f.error) {
         const err = document.createElement("div");
         err.className = "file-row-error";
         err.textContent = f.error;
@@ -270,13 +305,48 @@
 
     const body = await resp.json();
     const jobId = body.job_id;
+    currentJobId = jobId;
     resultsSection.hidden = false;
     resultsEl.innerHTML = "";
     pollJob(jobId);
     pollTimer = setInterval(() => pollJob(jobId), POLL_INTERVAL_MS);
   }
 
-  convertBtn.addEventListener("click", submitJob);
+  async function cancelJob() {
+    if (!jobInFlight || !currentJobId) return;
+    if (cancelBtn) {
+      cancelBtn.disabled = true;
+      cancelBtn.textContent = "Cancelling…";
+    }
+    try {
+      await fetch(`/api/jobs/${currentJobId}/cancel`, { method: "POST" });
+      // The next poll reflects the cancelled state; the run loop tears down the
+      // in-flight subprocess and marks the remaining files cancelled.
+    } catch (e) {
+      showError(`Could not cancel: ${e.message}`);
+    } finally {
+      if (cancelBtn) cancelBtn.textContent = "Cancel";
+    }
+  }
 
+  function syncPresetActive() {
+    const v = String(epochsInput.value).trim();
+    epochPresetBtns.forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.epochs === v);
+    });
+  }
+
+  epochPresetBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      epochsInput.value = btn.dataset.epochs;
+      syncPresetActive();
+    });
+  });
+  epochsInput.addEventListener("input", syncPresetActive);
+
+  convertBtn.addEventListener("click", submitJob);
+  if (cancelBtn) cancelBtn.addEventListener("click", cancelJob);
+
+  syncPresetActive();
   renderFileList();
 })();

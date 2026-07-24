@@ -31,10 +31,44 @@
     <div class="convert-section">
       <div class="section-head">
         <h2>NAM Capture &nbsp;<span class="section-tag">A2 → A1</span></h2>
-        <p class="section-desc">Moved out to its own standalone tool.</p>
+        <p class="section-desc">Drop NAM <code>.nam</code> A2 captures; each is distilled to a GP-50-ready A1 <code>.nam</code>.</p>
       </div>
       <section class="card">
-        <p class="subtitle">The NAM A2 → A1 distiller now lives in its own repo (link coming soon).</p>
+        <h3>1. A2 captures</h3>
+        <div id="drop-zone" class="drop-zone" tabindex="0">
+          <p>Drag &amp; drop <code>.nam</code> A2 captures here, or</p>
+          <button type="button" id="file-picker-btn">Choose files&hellip;</button>
+          <input type="file" id="file-input" accept=".nam" multiple hidden />
+        </div>
+        <ul id="file-list" class="file-list convert-list"></ul>
+
+        <div class="epochs-field" style="margin-top:0.85rem;">
+          <label for="epochs">Training epochs</label>
+          <div class="epochs-row" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+            <div id="epoch-presets" class="epoch-presets" style="display:flex; gap:0.35rem;">
+              <button type="button" class="epoch-preset" data-epochs="20">Draft</button>
+              <button type="button" class="epoch-preset" data-epochs="60">Standard</button>
+              <button type="button" class="epoch-preset" data-epochs="120">Best</button>
+            </div>
+            <input id="epochs" type="number" min="1" max="1000" value="60" style="width:6rem;" />
+          </div>
+          <ul class="epoch-guide">
+            <li><b>Draft (20)</b> — quick preview. Rough, artifacts likely; use only to sanity-check a file.</li>
+            <li><b>Standard (60)</b> — the sweet spot. Faithful tone at a sane runtime. <b>Default.</b></li>
+            <li><b>Best (120)</b> — chasing the last few %. Diminishing returns and noticeably longer.</li>
+          </ul>
+          <p class="epoch-note">Each epoch takes about the same time; more epochs = longer convert but tighter tone. The live progress bar shows an estimate once training starts.</p>
+        </div>
+
+        <div style="display:flex; gap:0.5rem; margin-top:0.85rem; align-items:center;">
+          <button type="button" id="convert-btn" class="primary" disabled>Convert A2 → A1</button>
+          <button type="button" id="cancel-btn" hidden>Cancel</button>
+        </div>
+        <div id="error-banner" class="error-banner" role="alert" hidden></div>
+        <section id="results-section" hidden style="margin-top:1rem;">
+          <h3>Results</h3>
+          <ul id="results" class="file-list"></ul>
+        </section>
       </section>
     </div>
 
@@ -87,5 +121,6 @@
   <script src="/static/ui_core.js"></script>
   <script src="/static/prst.js"></script>
   <script src="/static/convert_prst.js"></script>
+  <script src="/static/app.js"></script>
 </body>
 </html>

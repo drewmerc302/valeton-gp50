@@ -57,7 +57,15 @@ def _collect_cb():
     return cb, events
 
 
-def _fake_subprocess_ok(cmd, **kwargs):
+def _patch_subprocess(monkeypatch, fake):
+    """Route both stage runners through one fake: `_run` (render, blocking) and
+    `_run_streaming` (train, line-streamed). The fakes accept an `on_line` arg so
+    the same callable serves both."""
+    monkeypatch.setattr(engine, "_run", fake)
+    monkeypatch.setattr(engine, "_run_streaming", fake)
+
+
+def _fake_subprocess_ok(cmd, job=None, on_line=None, **kwargs):
     """Canned success for render_a2.py and the 0.13.0 train_a1_070.py stage
     (the 0.5x path transcodes its 0.7.0 export down in-process, emitting 0.5.x)."""
     cmd = [str(c) for c in cmd]
@@ -81,7 +89,7 @@ def _fake_subprocess_ok(cmd, **kwargs):
     raise AssertionError(f"unexpected command: {cmd}")
 
 
-def _fake_subprocess_render_fails_for_bad(cmd, **kwargs):
+def _fake_subprocess_render_fails_for_bad(cmd, job=None, on_line=None, **kwargs):
     """Like _fake_subprocess_ok, but render_a2.py fails whenever the source
     file's stem is 'bad' — used to test per-file failure isolation."""
     cmd = [str(c) for c in cmd]
@@ -96,7 +104,7 @@ def _fake_subprocess_render_fails_for_bad(cmd, **kwargs):
             cmd, 0, stdout="rendered 1000 samples\n", stderr=""
         )
     if "train_a1_070.py" in script:
-        return _fake_subprocess_ok(cmd, **kwargs)
+        return _fake_subprocess_ok(cmd, job, **kwargs)
     raise AssertionError(f"unexpected command: {cmd}")
 
 
@@ -122,7 +130,7 @@ def test_detect_architecture_already_a1(tmp_path):
 
 
 def test_a2_distillation_happy_path(tmp_path, monkeypatch):
-    monkeypatch.setattr(engine.subprocess, "run", _fake_subprocess_ok)
+    _patch_subprocess(monkeypatch, _fake_subprocess_ok)
 
     src = tmp_path / "capture.nam"
     _write_nam(src, "SlimmableContainer", "0.7.0")
@@ -148,10 +156,10 @@ def test_a2_distillation_happy_path(tmp_path, monkeypatch):
 
 
 def test_already_a1_passthrough(tmp_path, monkeypatch):
-    def _boom(cmd, **kwargs):
+    def _boom(cmd, *args, **kwargs):
         raise AssertionError("subprocess should not be invoked for passthrough files")
 
-    monkeypatch.setattr(engine.subprocess, "run", _boom)
+    _patch_subprocess(monkeypatch, _boom)
 
     src = tmp_path / "already_a1.nam"
     _write_nam(src, "WaveNet", "0.5.0")
@@ -172,7 +180,7 @@ def test_already_a1_passthrough(tmp_path, monkeypatch):
 
 
 def test_failing_file_does_not_kill_batch(tmp_path, monkeypatch):
-    monkeypatch.setattr(engine.subprocess, "run", _fake_subprocess_render_fails_for_bad)
+    _patch_subprocess(monkeypatch, _fake_subprocess_render_fails_for_bad)
 
     good = tmp_path / "good.nam"
     bad = tmp_path / "bad.nam"
@@ -191,12 +199,12 @@ def test_failing_file_does_not_kill_batch(tmp_path, monkeypatch):
 
 
 def test_unsupported_architecture_isolated(tmp_path, monkeypatch):
-    def _boom(cmd, **kwargs):
+    def _boom(cmd, *args, **kwargs):
         raise AssertionError(
             "subprocess should not be invoked for unsupported architectures"
         )
 
-    monkeypatch.setattr(engine.subprocess, "run", _boom)
+    _patch_subprocess(monkeypatch, _boom)
 
     src = tmp_path / "mystery.nam"
     _write_nam(src, "LSTM", "0.5.0")
@@ -213,7 +221,7 @@ def test_unsupported_architecture_isolated(tmp_path, monkeypatch):
 # --- 0.7.0 output format: wired to train_a1_070.py in the .venv (0.13.0) venv ---
 
 
-def _fake_subprocess_070(cmd, **kwargs):
+def _fake_subprocess_070(cmd, job=None, on_line=None, **kwargs):
     """Canned success for render_a2.py and train_a1_070.py (0.7.0 export)."""
     cmd = [str(c) for c in cmd]
     script = cmd[1]
@@ -237,7 +245,7 @@ def _fake_subprocess_070(cmd, **kwargs):
 
 
 def test_output_format_0_7_0_invokes_train_a1_070(tmp_path, monkeypatch):
-    monkeypatch.setattr(engine.subprocess, "run", _fake_subprocess_070)
+    _patch_subprocess(monkeypatch, _fake_subprocess_070)
 
     src = tmp_path / "capture.nam"
     _write_nam(src, "SlimmableContainer", "0.7.0")
@@ -260,13 +268,13 @@ def test_0_5x_path_uses_train_a1_070_in_venv_a2(tmp_path, monkeypatch):
     the 0.13.0 venv via train_a1_070.py --format 0.5x, transcoding in-process."""
     seen = {}
 
-    def _capture(cmd, **kwargs):
+    def _capture(cmd, job=None, on_line=None, **kwargs):
         cmd = [str(c) for c in cmd]
         if "train_a1_070.py" in cmd[1]:
             seen["train_cmd"] = cmd
-        return _fake_subprocess_ok(cmd, **kwargs)
+        return _fake_subprocess_ok(cmd, job, **kwargs)
 
-    monkeypatch.setattr(engine.subprocess, "run", _capture)
+    _patch_subprocess(monkeypatch, _capture)
 
     src = tmp_path / "capture.nam"
     _write_nam(src, "SlimmableContainer", "0.7.0")
@@ -289,3 +297,111 @@ def test_unknown_output_format_raises_value_error(tmp_path):
     cb, _ = _collect_cb()
     with pytest.raises(ValueError):
         run_job(job, cb)
+
+
+# --- cancellation ---
+
+
+def _fake_run_cancel_on_train(cmd, job=None, on_line=None, **kwargs):
+    """Renders fine, then simulates a cancel arriving during training: the stage
+    subprocess is torn down (rc=-1) and the job is flagged, exactly as
+    request_cancel() would do to a live train process."""
+    cmd = [str(c) for c in cmd]
+    script = cmd[1]
+    if "render_a2.py" in script:
+        Path(cmd[4]).write_bytes(b"fake wav bytes")
+        return subprocess.CompletedProcess(cmd, 0, "rendered\n", "")
+    if "train_a1_070.py" in script:
+        job.request_cancel()
+        return subprocess.CompletedProcess(cmd, -1, "", "terminated")
+    raise AssertionError(f"unexpected command: {cmd}")
+
+
+def test_cancel_during_training_marks_file_cancelled(tmp_path, monkeypatch):
+    _patch_subprocess(monkeypatch, _fake_run_cancel_on_train)
+    src = tmp_path / "capture.nam"
+    _write_nam(src, "SlimmableContainer", "0.7.0")
+    job = _make_job(tmp_path, [src])
+    cb, _ = _collect_cb()
+    run_job(job, cb)
+
+    assert job.cancelled
+    assert job.files[0].status == "cancelled"  # not "failed" from the rc=-1
+
+
+def test_cancel_skips_remaining_files(tmp_path, monkeypatch):
+    _patch_subprocess(monkeypatch, _fake_run_cancel_on_train)
+    srcs = []
+    for n in ("a", "b"):
+        p = tmp_path / f"{n}.nam"
+        _write_nam(p, "SlimmableContainer", "0.7.0")
+        srcs.append(p)
+    job = _make_job(tmp_path, srcs)
+    cb, _ = _collect_cb()
+    run_job(job, cb)
+
+    assert job.files[0].status == "cancelled"  # cancelled during its own train
+    assert job.files[1].status == "cancelled"  # never started
+
+
+def test_training_progress_streams_epoch_updates(tmp_path, monkeypatch):
+    """The train stage's DISTILL_PROGRESS lines drive live progress, detail, and
+    ETA on the FileState, mapped into the 0.5–0.95 band."""
+
+    def _fake_render(cmd, job=None, **kwargs):
+        cmd = [str(c) for c in cmd]
+        assert "render_a2.py" in cmd[1]
+        Path(cmd[4]).write_bytes(b"fake wav bytes")
+        return subprocess.CompletedProcess(cmd, 0, "rendered\n", "")
+
+    def _fake_train_stream(cmd, job, on_line):
+        cmd = [str(c) for c in cmd]
+        assert "train_a1_070.py" in cmd[1]
+        on_line("DISTILL_PROGRESS: 5/10\n")
+        on_line("DISTILL_PROGRESS: 10/10\n")
+        _write_nam(Path(cmd[4]) / "a1.nam", "WaveNet", "0.5.4")
+        stdout = (
+            "FORMAT: version=0.5.4 arch=WaveNet head_size=True -> OK (GP-50 compatible)\n"
+            "DISTILL_ESR: 0.0100\n"
+        )
+        return subprocess.CompletedProcess(cmd, 0, stdout, "")
+
+    monkeypatch.setattr(engine, "_run", _fake_render)
+    monkeypatch.setattr(engine, "_run_streaming", _fake_train_stream)
+
+    seen = []
+
+    def cb(state):
+        if state.status == "training" and state.detail:
+            seen.append((state.detail, round(state.progress, 4)))
+
+    src = tmp_path / "capture.nam"
+    _write_nam(src, "SlimmableContainer", "0.7.0")
+    job = _make_job(tmp_path, [src])
+    run_job(job, cb)
+
+    assert job.files[0].status == "done"
+    assert ("Training 5/10", pytest.approx(0.725)) in seen  # 0.5 + 0.45*0.5
+    assert any(d == "Training 10/10" for d, _ in seen)
+    # done clears the transient detail/eta
+    assert job.files[0].detail is None
+    assert job.files[0].eta_seconds is None
+
+
+def test_request_cancel_terminates_live_process(tmp_path):
+    import os
+    import subprocess as sp
+
+    if os.name != "posix":
+        pytest.skip("process-group kill is POSIX-only")
+    job = _make_job(tmp_path, [tmp_path / "x.nam"])
+    proc = sp.Popen(["sleep", "30"], start_new_session=True)
+    job._current_proc = proc
+    try:
+        job.request_cancel()
+        proc.wait(timeout=5)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+    assert job.cancelled
+    assert proc.returncode != 0  # SIGTERM'd, not a clean exit

@@ -1,13 +1,15 @@
 """Conversion engine: run NAM A2->A1 batch jobs with progress callbacks.
 
-Wraps the existing two-venv distillation pipeline as an importable,
-callback-driven job runner. Rendering always happens in the 0.13.0 venv
-(the only one that can load the A2 SlimmableContainer format); training
-happens in whichever venv produces the requested output format:
+Wraps the single-venv distillation pipeline as an importable, callback-driven
+job runner. Everything runs in the 0.13.0 venv (the only one that can load the
+A2 SlimmableContainer format). Both output formats train + export there; the
+0.5.x path transcodes the native 0.7.0 export down for the GP-50, in-process,
+with no torch and no retraining (see a2a1/nam_transcode.py):
 
     output_format='0.5x':
         A2.nam --(render, .venv/0.13.0)--> y.wav
-               --(train+export, .venv-a1/0.12.2, a2a1/train_a1.py)--> A1.nam (0.5.x)
+               --(train+export 0.7.0, .venv/0.13.0, a2a1/train_a1_070.py)
+               --(transcode 0.7.0 -> 0.5.x, in-process)--> A1.nam (0.5.x, GP-50)
 
     output_format='0.7.0':
         A2.nam --(render, .venv/0.13.0)--> y.wav
@@ -16,7 +18,10 @@ happens in whichever venv produces the requested output format:
 Already-A1 0.5.x files are detected and copied through untouched (regardless
 of requested output_format — no re-distillation of already-compatible files).
 This module does no device I/O of any kind — it only shells out to the local
-training venvs and touches the filesystem.
+0.13.0 venv and touches the filesystem.
+
+The 0.12.2 venv (`venv_a1`) is retired; the field is kept only for backward
+compatibility and is unused.
 """
 
 from __future__ import annotations
@@ -169,16 +174,13 @@ def _convert_one(
             return
 
         _update(state, progress_cb, status="training", progress=0.5)
-        if job.output_format == "0.7.0":
-            train_venv = job.venv_a2
-            train_script = A2A1_DIR / "train_a1_070.py"
-        else:
-            train_venv = job.venv_a1
-            train_script = A2A1_DIR / "train_a1.py"
+        # Both output formats now train + export in the 0.13.0 venv; the 0.5.x path
+        # transcodes the 0.7.0 export down in-process (see a2a1/nam_transcode.py).
+        # The 0.12.2 venv is no longer part of the pipeline.
         train_result = _run(
             [
-                str(train_venv),
-                str(train_script),
+                str(job.venv_a2),
+                str(A2A1_DIR / "train_a1_070.py"),
                 str(job.di_path),
                 str(y_wav),
                 str(workdir),
@@ -186,6 +188,8 @@ def _convert_one(
                 str(job.epochs),
                 "--arch",
                 "standard",
+                "--format",
+                job.output_format,
             ]
         )
         if train_result.returncode != 0:
@@ -246,8 +250,6 @@ def run_job(job: ConvertJob, progress_cb: ProgressCallback) -> ConvertJob:
         raise ValueError(f"unknown output_format {job.output_format!r}")
     if not job.venv_a2.exists():
         raise FileNotFoundError(f"0.13.0 venv python not found at {job.venv_a2}")
-    if not job.venv_a1.exists():
-        raise FileNotFoundError(f"0.12.2 venv python not found at {job.venv_a1}")
     if not job.di_path.exists():
         raise FileNotFoundError(f"DI file not found at {job.di_path}")
 

@@ -1,9 +1,9 @@
 """Fast, hermetic tests for app.engine.
 
-All subprocess.run calls into the .venv / .venv-a1 render+train scripts are
-monkeypatched with canned output, so these tests never run a real conversion
-(no torch, no NAM training). The one exception is architecture detection,
-which reads refs/A2.nam's JSON header directly (no model load).
+All subprocess.run calls into the .venv render+train scripts are monkeypatched
+with canned output, so these tests never run a real conversion (no torch, no
+NAM training). The one exception is architecture detection, which reads
+refs/A2.nam's JSON header directly (no model load).
 """
 
 import json
@@ -58,7 +58,8 @@ def _collect_cb():
 
 
 def _fake_subprocess_ok(cmd, **kwargs):
-    """Canned success for both render_a2.py and train_a1.py stages."""
+    """Canned success for render_a2.py and the 0.13.0 train_a1_070.py stage
+    (the 0.5x path transcodes its 0.7.0 export down in-process, emitting 0.5.x)."""
     cmd = [str(c) for c in cmd]
     script = cmd[1]
     if "render_a2.py" in script:
@@ -67,7 +68,7 @@ def _fake_subprocess_ok(cmd, **kwargs):
         return subprocess.CompletedProcess(
             cmd, 0, stdout="rendered 1000 samples\n", stderr=""
         )
-    if "train_a1.py" in script:
+    if "train_a1_070.py" in script:
         outdir = Path(cmd[4])
         a1 = outdir / "a1.nam"
         _write_nam(a1, "WaveNet", "0.5.4")
@@ -94,7 +95,7 @@ def _fake_subprocess_render_fails_for_bad(cmd, **kwargs):
         return subprocess.CompletedProcess(
             cmd, 0, stdout="rendered 1000 samples\n", stderr=""
         )
-    if "train_a1.py" in script:
+    if "train_a1_070.py" in script:
         return _fake_subprocess_ok(cmd, **kwargs)
     raise AssertionError(f"unexpected command: {cmd}")
 
@@ -252,6 +253,32 @@ def test_output_format_0_7_0_invokes_train_a1_070(tmp_path, monkeypatch):
     assert Path(state.output_path).exists()
     statuses = [s for _, s in events]
     assert statuses == ["detecting", "rendering", "training", "done"]
+
+
+def test_0_5x_path_uses_train_a1_070_in_venv_a2(tmp_path, monkeypatch):
+    """The 0.12.2 venv is retired: the 0.5x (GP-50) path now trains + exports in
+    the 0.13.0 venv via train_a1_070.py --format 0.5x, transcoding in-process."""
+    seen = {}
+
+    def _capture(cmd, **kwargs):
+        cmd = [str(c) for c in cmd]
+        if "train_a1_070.py" in cmd[1]:
+            seen["train_cmd"] = cmd
+        return _fake_subprocess_ok(cmd, **kwargs)
+
+    monkeypatch.setattr(engine.subprocess, "run", _capture)
+
+    src = tmp_path / "capture.nam"
+    _write_nam(src, "SlimmableContainer", "0.7.0")
+    job = _make_job(tmp_path, [src], output_format="0.5x")
+    cb, _ = _collect_cb()
+    run_job(job, cb)
+
+    assert job.files[0].status == "done"
+    train_cmd = seen["train_cmd"]
+    assert train_cmd[0] == str(job.venv_a2)  # 0.13.0 venv, not venv_a1
+    assert "--format" in train_cmd
+    assert train_cmd[train_cmd.index("--format") + 1] == "0.5x"
 
 
 def test_unknown_output_format_raises_value_error(tmp_path):

@@ -13,25 +13,37 @@ match to the A2 than the A2 was to the real amp. You then load the A1 `.nam` in
 Valeton Suite exactly like any A1 capture and let Valeton's own converter make the
 SnapTone. This pipeline never touches the SnapTone format.
 
-## Why two virtual environments (this is load-bearing, not accidental)
+## One virtual environment (the split is gone)
+
+Everything runs in a single **0.13.0** venv:
 
 | Stage | venv | NAM version | Why |
 |-------|------|-------------|-----|
 | 1. Render A2 | `.venv` | **0.13.0** | Only 0.13.0+ can load A2 (`SlimmableContainer`). |
-| 2. Train + export A1 | `.venv-a1` | **0.12.2** | 0.13.0+ exports the **0.7.0** `.nam` format; the GP-50 needs **0.5.x**. 0.12.2 emits 0.5.x natively. |
+| 2. Train + export A1 | `.venv` | **0.13.0** | Trains a standard A1, exports 0.7.0, then transcodes to 0.5.x in-process. |
 
-If you train/export with 0.13.0 the file *looks* like a WaveNet A1 but uses the new
-0.7.0 layer schema (nested `head`, `kernel_sizes`, activation objects) and the GP-50
-converter rejects it. The 0.5.x pin is the whole reason Stage 2 is separate.
-(Same pin that `arturksd/NAM-A1-local-trainer` uses for the GP-50.)
+0.13.0 exports the **0.7.0** `.nam` format; the GP-50 needs **0.5.x**. For a *standard*
+WaveNet the two formats differ **only** in their config schema (nested `head`,
+`kernel_sizes`, activation objects vs. flat `head_size`/`head_bias`) — the flat weight
+array, `head_scale` last, is byte-identical. So `a2a1/nam_transcode.py` reshapes the
+config with no torch and no retraining; the weights pass through verbatim. That removed
+the old second venv (0.12.2), which previously existed only to emit 0.5.x natively.
+
+> Proof: loading a standard A1 into 0.13.0 and re-exporting reproduces the 0.5.x weight
+> array with max|Δ| = 0; the transcoded 0.5.x config is field-by-field identical to a
+> genuine 0.5.x standard file, and 0.12.2 loads it round-tripping the weights at max|Δ|
+> = 0. The transcoder **refuses** any non-standard model (active FiLM/slimmable/gating)
+> rather than silently dropping parameters.
 
 ## Setup
 
 ```bash
 cd /Users/drewmerc/workspace/valeton
-python3 -m venv .venv     && ./.venv/bin/python     -m pip install -r a2a1/requirements-a2.txt
-python3 -m venv .venv-a1  && ./.venv-a1/bin/python  -m pip install -r a2a1/requirements-a1.txt
+python3 -m venv .venv && ./.venv/bin/python -m pip install -r a2a1/requirements-a2.txt
 ```
+
+The legacy 0.12.2 venv (`.venv-a1` / `requirements-a1.txt`) is no longer used and can be
+deleted (`rm -rf .venv-a1`) to reclaim ~1.3 GB.
 
 The DI input is `refs/v3_0_0.wav` (the official NAM standardized input — preferred,
 because the resulting A1 behaves like a normal capture). If you don't have it, make a
@@ -107,8 +119,12 @@ vendor SysEx to the pedal — a wrong opcode could overwrite a patch or factory-
 
 - `render_a2.py` — Stage 1 (0.13.0): extract A2-Full submodel, render DI, chunked to
   bound memory.
-- `train_a1.py` — Stage 2 (0.12.2): train standard A1, export 0.5.x `.nam`, report ESR.
-- `a2_to_a1.py` — batch orchestrator (stdlib only; shells out to both venvs).
+- `train_a1_070.py` — Stage 2 (0.13.0): train standard A1, export 0.7.0, report ESR;
+  with `--format 0.5x` transcodes to a GP-50-compatible 0.5.x `.nam` in-process.
+- `nam_transcode.py` — pure-Python (no torch) 0.7.0 → 0.5.x transcoder + validator.
+- `a2_to_a1.py` — batch orchestrator (stdlib only; shells out to the single 0.13.0 venv).
+- `train_a1.py` — **legacy**: the old 0.12.2 Stage 2 (native 0.5.x export). No longer
+  used by the pipeline; kept for reference.
 - `make_di.py` — synthetic DI fallback.
 - `midi_sniff.py` — GP-50 MIDI SysEx logger (passive / proxy / analyze).
 

@@ -15,7 +15,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from app import blocklib, device_io, patchlib, templates_store
+from app import ai, blocklib, device_io, patchlib, templates_store
 from patch import convert as prst_convert
 from patch import prst_format
 
@@ -109,6 +109,67 @@ def inventory() -> dict:
 def facets() -> dict:
     """Active-block filter dimensions for the preset explorer (blocks, types, models)."""
     return patchlib.facets()
+
+
+# --- AI patch generation (Bedrock Haiku 4.5) -------------------------------
+
+
+class AiPatchRequest(BaseModel):
+    prompt: str
+    mode: str = "create"  # "create" | "improve"
+    patch_slot: int  # base slot; edits are returned, never written from here
+
+
+@router.get("/ai/status")
+def ai_status() -> dict:
+    """Whether AI patch generation is reachable (region + boto3 configured). The
+    frontend gates the AI buttons on this."""
+    ok = ai.bedrock_available()
+    return {"available": ok, "model_id": ai.model_id() if ok else None}
+
+
+@router.post("/ai/patch")
+def ai_patch(req: AiPatchRequest) -> dict:
+    """Generate (create) or refine (improve) a patch from a text prompt. Returns a
+    VALIDATED edit spec (same shape as /edit) — this endpoint never writes to the
+    device; the frontend merges the edits and the user applies them via the
+    existing Download/Write/Live controls."""
+    if not ai.bedrock_available():
+        raise HTTPException(
+            503, "AI is not configured: set AWS_REGION and AWS credentials on the backend"
+        )
+    if req.mode not in ("create", "improve"):
+        raise HTTPException(400, "mode must be 'create' or 'improve'")
+    prompt = (req.prompt or "").strip()
+    if not prompt:
+        raise HTTPException(400, "prompt is required")
+    if len(prompt) > ai.MAX_PROMPT:
+        raise HTTPException(400, f"prompt too long (max {ai.MAX_PROMPT} chars)")
+    patch = next(
+        (p for p in patchlib.all_patches() if p["slot"] == req.patch_slot), None
+    )
+    if patch is None:
+        raise HTTPException(400, f"unknown patch slot {req.patch_slot}")
+    try:
+        raw = ai.generate_patch_edits(prompt, mode=req.mode, patch=patch)
+    except Exception as e:  # network / creds / model errors -> 502
+        raise HTTPException(502, f"Bedrock call failed: {e}")
+    # guardrail: the model flags anything that isn't guitar-tone/preset/music work
+    if raw.get("off_topic"):
+        raise HTTPException(
+            422,
+            "This tool only designs guitar tones / presets. "
+            + (str(raw.get("summary")) if raw.get("summary") else "Ask for a guitar sound."),
+        )
+    clean, warnings = ai.validate_edits(
+        raw, base_blocks=patch["blocks"], base_order=patch.get("order") or []
+    )
+    return {
+        "edits": clean,
+        "summary": str(raw.get("summary") or ""),
+        "warnings": warnings,
+        "model_used": ai.model_id(),
+    }
 
 
 @router.get("/usage/snaptone/{slot}")

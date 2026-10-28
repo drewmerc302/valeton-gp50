@@ -124,6 +124,11 @@
     }
     if (path === "/api/device/facets") return J(store.lib.facets(inventory().patches));
 
+    // NB: /api/device/ai/* is never routed here — the interceptor lets it fall
+    // through to the real backend (see the fetch patch below). That's what powers
+    // the hybrid host: browser device I/O + backend AI. In the pure static build
+    // (no backend) those requests just fail, so the Explorer hides the AI buttons.
+
     let m;
     if ((m = path.match(/^\/api\/device\/models\/(.+)$/))) {
       const block = decodeURIComponent(m[1]);
@@ -379,7 +384,9 @@
   root.fetch = function (input, init) {
     const url = typeof input === "string" ? input : (input && input.url) || "";
     const path = url.replace(/^https?:\/\/[^/]+/, "").split("?")[0];
-    if (path.startsWith("/api/device/")) {
+    // AI endpoints stay on the real backend (Bedrock); everything else under
+    // /api/device/* is served in-page over WebMIDI + the bundled snapshot.
+    if (path.startsWith("/api/device/") && !path.startsWith("/api/device/ai/")) {
       const method = (init && init.method) || (typeof input === "object" && input.method) || "GET";
       let body = {};
       if (init && init.body) { try { body = JSON.parse(init.body); } catch { body = {}; } }

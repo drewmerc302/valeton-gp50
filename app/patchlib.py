@@ -19,6 +19,7 @@ overrides SnapTone slot labels with authoritative device names when present.
 
 from __future__ import annotations
 
+import base64
 import glob
 import json
 import os
@@ -33,6 +34,10 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXPORT_DIR = os.path.join(PROJECT_ROOT, "presetExports")
 SCAN_DIR = os.path.join(PROJECT_ROOT, "device_scan")  # populated by a live device scan
 BANK_MAP = os.path.join(PROJECT_ROOT, "patch", "bank_map.json")
+# Factory bank baked into the repo (base64 .prst bodies). The inventory falls back
+# to this when no device_scan/ or presetExports/ .prst files exist — e.g. the
+# hosted container has no pedal and no local exports.
+DATA_SNAPSHOT = os.path.join(PROJECT_ROOT, "app", "static", "data", "presets.json")
 # the per-device model catalog (fxid_ring.json / fxid_ring_gp5.json) is resolved
 # in _ring() from the detected device — see _device()
 
@@ -45,14 +50,47 @@ def _source_dir() -> str:
 
 
 @lru_cache(maxsize=1)
-def _device() -> "fmt.DeviceProfile":
-    """Which device the loaded presets belong to, detected from the first .prst
-    in the active source dir (device_scan/ or presetExports/). Defaults to GP-50
-    when the dir is empty or unrecognized."""
-    files = sorted(glob.glob(os.path.join(_source_dir(), "*.prst")))
-    for path in files:
+def _snapshot_bodies() -> dict:
+    """slot -> full .prst bytes from the committed factory snapshot
+    (app/static/data/presets.json). Empty if the file is missing/unreadable."""
+    if not os.path.exists(DATA_SNAPSHOT):
+        return {}
+    try:
+        d = json.load(open(DATA_SNAPSHOT))
+    except (ValueError, OSError):
+        return {}
+    out = {}
+    for p in d.get("presets", []):
         try:
-            return fmt.detect(open(path, "rb").read())
+            out[int(p["slot"])] = base64.b64decode(p["b64"])
+        except (KeyError, ValueError, TypeError):
+            continue
+    return out
+
+
+def _sources() -> list[tuple[int, str, bytes]]:
+    """The inventory's raw bodies as (slot, filename, bytes). Real .prst files
+    (device_scan/ or presetExports/) win; otherwise the committed factory
+    snapshot, so a backend with no pedal and no local exports still has a bank."""
+    files = sorted(glob.glob(os.path.join(_source_dir(), "*.prst")))
+    if files:
+        return [
+            (_slot_from_filename(p), os.path.basename(p), open(p, "rb").read())
+            for p in files
+        ]
+    return [
+        (slot, f"{slot:02d}.prst", b) for slot, b in sorted(_snapshot_bodies().items())
+    ]
+
+
+@lru_cache(maxsize=1)
+def _device() -> "fmt.DeviceProfile":
+    """Which device the loaded presets belong to, detected from the first body in
+    the active source (files, else the snapshot). Defaults to GP-50 when empty
+    or unrecognized."""
+    for _slot, _fname, b in _sources():
+        try:
+            return fmt.detect(b)
         except (ValueError, OSError):
             continue
     return fmt.GP50
@@ -308,20 +346,19 @@ def _cab_name(fxlow: int) -> Optional[str]:
 def _load() -> tuple:
     patches: list[Patch] = []
     raw: dict[int, bytes] = {}
-    for path in sorted(glob.glob(os.path.join(_source_dir(), "*.prst"))):
-        b = open(path, "rb").read()
+    for slot, fname, b in _sources():
         recs = fmt.model_records(b)
         ns = next((idx for idx, cat, _ in recs if cat == NS_CAT), 0)
         cab = next((fx for _, cat, fx in recs if cat == CAB_CAT), 0)
         amp = next((fx for _, cat, fx in recs if cat in AMP_CATS), 0)
         amp_cat = next((cat for _, cat, _ in recs if cat in AMP_CATS), 0x07)
-        name = _patch_name(b, path)
+        name = _patch_name(b, fname)
         patches.append(
             Patch(
-                slot=_slot_from_filename(path),
+                slot=slot,
                 name=name,
                 empty=is_empty_name(name),
-                file=os.path.basename(path),
+                file=fname,
                 uses_snaptone=ns != 0,
                 snaptone_slot=ns,
                 ir_slot=cab,
@@ -393,6 +430,7 @@ def reload() -> None:
     _device.cache_clear()
     _ring.cache_clear()
     _multi_type_blocks.cache_clear()
+    _snapshot_bodies.cache_clear()
 
 
 def all_patches() -> list[Patch]:
@@ -508,8 +546,22 @@ def patches_using_ir(slot: int) -> list[Patch]:
 
 
 def patch_file(slot: int) -> Optional[str]:
+    """On-disk path for a slot's .prst, or None when the bank came from the
+    committed snapshot (no file exists — use patch_bytes for the body)."""
     p = next((p for p in all_patches() if p["slot"] == slot), None)
-    return os.path.join(_source_dir(), p["file"]) if p else None
+    if not p:
+        return None
+    path = os.path.join(_source_dir(), p["file"])
+    return path if os.path.exists(path) else None
+
+
+def patch_bytes(slot: int) -> Optional[bytes]:
+    """A slot's full .prst body from disk when a file exists, else the committed
+    factory snapshot. The device-agnostic way to get a base body for edits."""
+    src = patch_file(slot)
+    if src is not None:
+        return open(src, "rb").read()
+    return _snapshot_bodies().get(slot)
 
 
 # --- clone / edit (features 5/6): repoint a patch's SnapTone, refix the CRC ---
@@ -518,21 +570,20 @@ def patch_file(slot: int) -> Optional[str]:
 def clone_with_snaptone(patch_slot: int, target_ns_slot: int) -> tuple[str, bytes]:
     """Return (filename, .prst bytes) for `patch_slot` repointed at N->S
     `target_ns_slot`. One index byte changed + CRC refixed. Raises on bad input."""
-    src = patch_file(patch_slot)
-    if src is None:
+    body = patch_bytes(patch_slot)
+    if body is None:
         raise ValueError(f"unknown patch slot {patch_slot}")
     if not (0 <= target_ns_slot <= SNAPTONE_SLOT_MAX):
         raise ValueError(f"SnapTone slot out of range: {target_ns_slot}")
-    b = bytearray(open(src, "rb").read())
+    b = bytearray(body)
     off = fmt.model_rec_offset(b, NS_CAT)
     if off is None:
         raise ValueError(f"patch {patch_slot} has no N->S (SnapTone) block")
     b[off] = target_ns_slot
     fmt.refix_crc(b)
     label = (find_snaptone(target_ns_slot) or {}).get("name") or f"NS{target_ns_slot}"
-    stem = os.path.basename(src).replace(".prst", "")
     safe = re.sub(r"[^A-Za-z0-9]+", "", label)[:12]
-    return f"{stem}__{safe}.prst", bytes(b)
+    return f"{_patch_stem(patch_slot)}__{safe}.prst", bytes(b)
 
 
 def repoint_snaptone_body(
@@ -642,13 +693,18 @@ def apply_edits_bytes(b: bytearray, edits: dict) -> None:
     fmt.refix_crc(b)
 
 
+def _patch_stem(slot: int) -> str:
+    """Filename stem for a slot, from disk or the snapshot's synthetic name."""
+    p = next((p for p in all_patches() if p["slot"] == slot), None)
+    return p["file"].replace(".prst", "") if p else f"{slot:02d}"
+
+
 def apply_edits(patch_slot: int, edits: dict) -> tuple[str, bytes]:
     """Produce an edited .prst (name, bytes) for the given slot. Thin wrapper over
-    apply_edits_bytes that loads the slot's base .prst from disk."""
-    src = patch_file(patch_slot)
-    if src is None:
+    apply_edits_bytes that loads the slot's base body (disk or snapshot)."""
+    body = patch_bytes(patch_slot)
+    if body is None:
         raise ValueError(f"unknown patch slot {patch_slot}")
-    b = bytearray(open(src, "rb").read())
+    b = bytearray(body)
     apply_edits_bytes(b, edits)
-    stem = os.path.basename(src).replace(".prst", "")
-    return f"{stem}__edited.prst", bytes(b)
+    return f"{_patch_stem(patch_slot)}__edited.prst", bytes(b)

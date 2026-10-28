@@ -209,6 +209,7 @@
   const blockToggled = new Set(); // `${slot}:${blkIdx}` blocks flipped from their default expand state (active=open)
   const edits = new Map(); // slot -> {params:{blk:{alg:val}}, bypass:{blk:bool}, settings:{}, models:{blk:fxid}, override:{blk:{...}}}
   let allModels = {}; // block -> [selectable models w/ param defs] (for the model picker)
+  let aiAvailable = false; // Bedrock patch generation reachable (backend-only; see /ai/status)
   let libEntries = []; // all block-library entries (grouped client-side by block)
   let pickerKey = null; // `${slot}:${blkIdx}` of the open model picker, or null
 
@@ -526,6 +527,19 @@
       }
     }
     bar.appendChild(rst);
+    // AI patch generation (backend-only; buttons hidden when /ai/status is unavailable)
+    if (aiAvailable) {
+      const mkAi = (txt, title, fn) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "ai-btn"; b.textContent = txt; b.title = title;
+        b.addEventListener("click", fn);
+        return b;
+      };
+      bar.appendChild(mkAi("✨ Create with AI", "Design a new patch from a text prompt", () => generateAi(p, "create")));
+      bar.appendChild(mkAi("✨ Improve with AI", "Refine this patch from a text prompt", () => generateAi(p, "improve")));
+      if (isDirty(p.slot)) // apply-now shortcut: push the current edits straight to the pedal
+        bar.appendChild(mkAi("✨ Apply now", "Write the current edits directly to the pedal", () => aiApplyNow(p)));
+    }
     const note = document.createElement("span");
     note.className = "subtitle save-note";
     const liveNoteEl = document.createElement("span");
@@ -1028,6 +1042,103 @@
       if (note) note.textContent = `✓ Written to slot ${target}${vn}.`;
     } catch (err) {
       if (note) note.textContent = `Write failed: ${err.message}`;
+    }
+  }
+
+  // --- AI patch generation (Bedrock Haiku 4.5, backend) ----------------------
+
+  function saveNote(slot) {
+    return listEl.querySelector(`.save-bar[data-slot="${slot}"] .save-note`);
+  }
+
+  // Merge a validated AI edit spec into the slot's pending edit map. Model swaps
+  // reuse the catalog descriptor (allModels) so the chip re-renders, mirroring
+  // applyModel; params/bypass/settings/name/order/footswitches merge on top.
+  function applyAiEdits(p, ed) {
+    const e = getEdit(p.slot);
+    const aiParams = ed.params || {};
+    Object.entries(ed.models || {}).forEach(([blk, fxid]) => {
+      const idx = Number(blk);
+      const blockName = (p.blocks[idx] || {}).block;
+      const model = (allModels[blockName] || []).find((m) => m.fxid === Number(fxid));
+      if (!model) return; // backend already validated; skip if catalog lacks it
+      e.models[idx] = model.fxid;
+      e.override[idx] = {
+        fxid: model.fxid, name: model.name, official: model.official || null,
+        type: model.type || "", label: model.label, label_official: model.label_official,
+        params: model.params || [],
+      };
+      const pv = {};
+      (model.params || []).forEach((pd) => {
+        const sv = aiParams[blk] ? aiParams[blk][pd.algId] : undefined;
+        pv[pd.algId] = sv !== undefined ? Number(sv) : resolveDefault(pd);
+      });
+      e.params[idx] = pv;
+    });
+    Object.entries(aiParams).forEach(([blk, algs]) => {
+      const idx = Number(blk);
+      if (ed.models && ed.models[blk] !== undefined) return; // handled with the model swap
+      const cur = e.params[idx] || {};
+      Object.entries(algs).forEach(([alg, val]) => { cur[Number(alg)] = Number(val); });
+      e.params[idx] = cur;
+    });
+    Object.entries(ed.bypass || {}).forEach(([blk, on]) => { e.bypass[Number(blk)] = !!on; });
+    if (ed.settings) Object.assign(e.settings, ed.settings);
+    if (ed.name != null) e.name = ed.name;
+    if (ed.order != null) e.order = ed.order;
+    if (ed.footswitches && (ed.footswitches.fs1 || ed.footswitches.fs2)) e.footswitches = ed.footswitches;
+  }
+
+  async function generateAi(p, mode) {
+    const prompt = await UI.promptDialog(
+      mode === "create"
+        ? `Describe the tone to CREATE for slot ${p.slot} (e.g. "80s clean chorus for funk"):`
+        : `Describe how to IMPROVE "${p.name}" (e.g. "more aggressive, tighter low end"):`,
+      "", "Generate"
+    );
+    if (!prompt) return;
+    let note = saveNote(p.slot);
+    if (note) note.textContent = "✨ Generating with AI…";
+    try {
+      const j = await withTimeout(
+        UI.jpost("/api/device/ai/patch", { prompt, mode, patch_slot: p.slot }),
+        60000, "AI request timed out"
+      );
+      applyAiEdits(p, j.edits || {});
+      renderPresets(); // rebuilds the save bar (now dirty + Apply-now button)
+      const nw = (j.warnings && j.warnings.length)
+        ? ` — ${j.warnings.length} value${j.warnings.length > 1 ? "s" : ""} adjusted to fit the device` : "";
+      UI.toast(`✨ ${j.summary || "Patch generated"}`, "ok");
+      note = saveNote(p.slot); // ref went stale after re-render
+      if (note) note.textContent = `✨ ${j.summary || "Generated"}${nw}. Review, then Download / Write / Live edit — or Apply now.`;
+      liveKick(p.slot); // if live mode is on, mirror immediately
+    } catch (e) {
+      note = saveNote(p.slot);
+      if (note) note.textContent = `AI failed: ${e.message}`;
+      else UI.toast(`AI failed: ${e.message}`, "err");
+    }
+  }
+
+  // Apply-now shortcut: write the current edits straight to the pedal. Prefers a
+  // one-shot WebMIDI write (works on any host incl. the hosted backend, where the
+  // server has no pedal); falls back to the server write flow otherwise.
+  async function aiApplyNow(p) {
+    const note = saveNote(p.slot);
+    if (window.DeviceBridge && DeviceBridge.webmidiAvailable()) {
+      if (!(await UI.confirmDialog(`Write this patch to pedal slot ${p.slot}? This overwrites it.`, "Write"))) return;
+      try {
+        if (!DeviceBridge.connected()) { if (note) note.textContent = "Connecting to pedal…"; await DeviceBridge.connect(); }
+        if (note) note.textContent = `Reading slot ${p.slot}…`;
+        const base = await DeviceBridge.readSlotPrst(p.slot);
+        const edited = window.PRST.applyEdits(base, editsSpec(p.slot));
+        if (note) note.textContent = `Writing slot ${p.slot}…`;
+        await withTimeout(DeviceBridge.writeSlot(p.slot, edited), 15000, "write timed out — bring this tab to the front");
+        if (note) note.textContent = `✓ Written to slot ${p.slot}.`;
+      } catch (e) {
+        if (note) note.textContent = `Apply failed: ${e.message}`;
+      }
+    } else {
+      writeToDevice(p); // no WebMIDI here → server write path (prompts for slot)
     }
   }
 
@@ -1944,6 +2055,8 @@
       return;
     }
     await loadModelsAndLib();
+    try { aiAvailable = (await UI.jget("/api/device/ai/status")).available === true; }
+    catch { aiAvailable = false; } // backend-only; static build reports unavailable
     buildFilterBar();
     renderSaved();
     // A prior visit's real device scan survives reloads (static_api's scan cache) —

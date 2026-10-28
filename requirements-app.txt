@@ -1,0 +1,9 @@
+# Web-app runtime deps for the FastAPI server (app/). Recreate .venv-app with:
+#   python3 -m venv .venv-app && ./.venv-app/bin/python -m pip install -r requirements-app.txt
+# httpx is used by the pytest TestClient; boto3 by the AI patch endpoint (Bedrock).
+fastapi
+uvicorn[standard]
+python-multipart
+boto3
+pytest
+httpx

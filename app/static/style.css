@@ -926,6 +926,12 @@ input[type="range"]::-moz-range-thumb {
   color: var(--text); border-radius: 6px; padding: 0.36rem 0.8rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;
 }
 .write-dev:hover { background: color-mix(in srgb, #d8434a 38%, transparent); }
+/* AI patch generation: violet, distinct from the red/green device actions */
+.ai-btn {
+  border: 1px solid #7c5cff; background: color-mix(in srgb, #7c5cff 18%, transparent); color: var(--text);
+  border-radius: 6px; padding: 0.36rem 0.8rem; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+}
+.ai-btn:hover { background: color-mix(in srgb, #7c5cff 30%, transparent); }
 .save-note { font-size: 0.78rem; }
 /* Live edit / Keep: green = safe + inviting; pops against the red app accent */
 .live-toggle {

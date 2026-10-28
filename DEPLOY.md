@@ -95,3 +95,73 @@ npx wrangler pages deploy dist/ --project-name valeton-beta
 
 Everything above the deploy step is already built and validated; only the host/auth
 choice remains.
+
+## AI patch generation — backend on AWS App Runner (CloudFormation)
+
+The "Create/Improve patch with AI" feature calls **AWS Bedrock (Haiku 4.5)** from the
+Python backend, so it can't run on the static Cloudflare/Vercel host — it needs a running
+server with AWS credentials. The container backend is self-sufficient: inventory falls back
+to the committed factory snapshot (`app/static/data/presets.json`), and device writes stay
+in the browser over WebMIDI (the server has no pedal). The AI endpoint is the only thing
+that needs the backend, and it's a thin per-request Bedrock proxy — so we host it on **App
+Runner**, which hands us an HTTPS URL and autoscaling with no ALB/VPC to manage.
+
+Prereqs (once per account): enable **Haiku 4.5** in Bedrock → Model access for the region.
+No VPC, subnets, or ACM cert needed — App Runner's `*.awsapprunner.com` URL is already HTTPS
+(satisfies WebMIDI's secure-context requirement).
+
+```bash
+PROFILE=igor
+REGION=us-east-1
+ACCOUNT=$(aws sts get-caller-identity --profile $PROFILE --query Account --output text)
+REPO=$ACCOUNT.dkr.ecr.$REGION.amazonaws.com/valeton-ai
+
+# 1. build (amd64) + push the image to ECR
+aws ecr create-repository --repository-name valeton-ai --profile $PROFILE --region $REGION 2>/dev/null || true
+aws ecr get-login-password --profile $PROFILE --region $REGION | docker login --username AWS --password-stdin $ACCOUNT.dkr.ecr.$REGION.amazonaws.com
+docker build --platform linux/amd64 -t $REPO:latest .
+docker push $REPO:latest
+
+# 2. deploy the App Runner service (+ instance role scoped to bedrock:InvokeModel).
+#    AppPassword gates the whole app behind HTTP Basic (protects the paid Bedrock
+#    endpoint); pick a long random value — min 12 chars.
+APP_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')
+echo "app password: $APP_PASSWORD"   # save this — needed to open the site
+aws cloudformation deploy \
+  --template-file deploy/valeton-ai.apprunner.cfn.yaml \
+  --stack-name valeton-ai \
+  --capabilities CAPABILITY_IAM \
+  --profile $PROFILE --region $REGION \
+  --parameter-overrides ImageUri=$REPO:latest AppPassword="$APP_PASSWORD"
+
+# 3. grab the HTTPS URL and open it in Chrome/Edge — the browser prompts for the
+#    username (default "valeton") + AppPassword once, then remembers it. Grant WebMIDI SysEx once.
+aws cloudformation describe-stacks --stack-name valeton-ai --profile $PROFILE --region $REGION \
+  --query "Stacks[0].Outputs[?OutputKey=='ServiceUrl'].OutputValue" --output text
+```
+
+Redeploying a new image: `docker build/push` the same tag, then either set
+`AutoDeploy=true` in the stack, or run `aws apprunner start-deployment --service-arn <arn>
+--profile $PROFILE`. Note: a `cloudformation deploy` that only changes env/params does **not**
+re-pull an unchanged `:latest` tag — App Runner reuses the cached image. After any image push,
+force a fresh pull with `start-deployment` (or `AutoDeploy=true`).
+
+> zsh gotcha: quote image tags as `"${REPO}:latest"` — unquoted `$REPO:latest` triggers zsh's
+> `:l` modifier and mangles the tag (`valeton-ai` → `valeton-aiatest`).
+
+Confirm the exact Haiku 4.5 model/inference-profile id for the account with
+`aws bedrock list-inference-profiles --profile $PROFILE --region $REGION`; override via the
+`BedrockModelId` parameter (or the `BEDROCK_MODEL_ID` env var) if it differs from the default.
+
+**Access control:** the backend gates every route behind HTTP Basic Auth when
+`APP_AUTH_PASSWORD` is set (the templates wire it from the `AppPassword` parameter). This
+protects the paid Bedrock endpoint and the pages alike — the browser sends the credentials
+on every same-origin request, so the in-page AI calls are covered too. `/health` stays open
+for infra checks. Username defaults to `valeton` (override with `AppUsername`). To rotate,
+re-deploy with a new `AppPassword`. Unset the var (local dev / the public static Vercel
+build) and the gate is a no-op.
+
+**Custom domain / ALB alternative:** `deploy/valeton-ai.cfn.yaml` is a validated ECS/Fargate
++ HTTPS-ALB stack for when you need a VPC-scoped deployment or a custom domain with an ACM
+cert (pass `VpcId`, `PublicSubnetIds`, `CertificateArn`, `ImageUri`, `AppPassword`). App Runner
+is the simpler/cheaper default; use the ALB stack only if you specifically need it.
